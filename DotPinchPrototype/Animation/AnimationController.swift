@@ -1,4 +1,4 @@
-// Singleton coordinating all animators via a single shared CADisplayLink.
+// Coordinates all animators via a single shared CADisplayLink.
 //
 // One display link per app — animators share dt per frame so multi-property
 // animations stay in lockstep. Each frame opens a CATransaction with
@@ -6,14 +6,15 @@
 // underneath any view writes the per-frame valueChanged closures perform.
 // On registration the animator ticks once synchronously at dt=0 so the view
 // paints at its starting value on the same vsync as the start() call.
+//
+// Not a singleton. The composition root creates one instance and injects it
+// into every SpringAnimator that needs to run.
 
 import Foundation
 import QuartzCore
 import UIKit
 
-final class AnimationController {
-
-    static let shared = AnimationController()
+public final class AnimationController {
 
     private var animations: [UUID: AnimatorProviding] = [:]
 
@@ -26,26 +27,21 @@ final class AnimationController {
         return link
     }()
 
-    private init() {}
+    public init() {}
 
     @objc private func displayLinkFired(_ link: CADisplayLink) {
         let dt = link.targetTimestamp - link.timestamp
 
-        // Open the implicit-animation suppression window BEFORE any animator's
-        // valueChanged closure fires.
-        CATransaction.begin()
-        CATransaction.setDisableActions(true)
-
-        for animator in animations.values {
-            if animator.state == .ended {
-                animator.reset()
-                animations.removeValue(forKey: animator.id)
-            } else {
-                animator.updateAnimation(dt: dt)
+        CATransaction.withSuppressedActions {
+            for animator in animations.values {
+                if animator.state == .ended {
+                    animator.reset()
+                    animations.removeValue(forKey: animator.id)
+                } else {
+                    animator.updateAnimation(dt: dt)
+                }
             }
         }
-
-        CATransaction.commit()
 
         if animations.isEmpty {
             displayLink.isPaused = true
@@ -64,9 +60,8 @@ final class AnimationController {
 
         // Tick once synchronously at dt=0 so the view paints at its starting
         // value on the same vsync as the start() call.
-        CATransaction.begin()
-        CATransaction.setDisableActions(true)
-        animator.updateAnimation(dt: 0)
-        CATransaction.commit()
+        CATransaction.withSuppressedActions {
+            animator.updateAnimation(dt: 0)
+        }
     }
 }

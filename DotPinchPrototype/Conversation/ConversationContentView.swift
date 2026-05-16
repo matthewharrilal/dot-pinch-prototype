@@ -179,32 +179,30 @@ final class ConversationContentView: UIView {
     /// Apply the morph's render-token bundle. Pure projection — no curve math
     /// happens here; tokens carry the already-derived values.
     func apply(_ tokens: ConversationMorphTokens) {
-        CATransaction.begin()
-        CATransaction.setDisableActions(true)
-        defer { CATransaction.commit() }
+        CATransaction.withSuppressedActions {
+            // Geometry — only contentRoot scales; chat surface (self) holds station.
+            let s = tokens.similarityScale
+            let isRTL = effectiveUserInterfaceLayoutDirection == .rightToLeft
+            let anchorX = isRTL ? (1 - PinchTuning.anchorPoint.x) : PinchTuning.anchorPoint.x
+            let anchorY = PinchTuning.anchorPoint.y
+            let tx = (anchorX - 0.5) * bounds.width  * (1 - s)
+            let ty = (anchorY - 0.5) * bounds.height * (1 - s)
+            contentRoot.transform = CGAffineTransform(translationX: tx, y: ty).scaledBy(x: s, y: s)
 
-        // Geometry — only contentRoot scales; chat surface (self) holds station.
-        let s = tokens.similarityScale
-        let isRTL = effectiveUserInterfaceLayoutDirection == .rightToLeft
-        let anchorX = isRTL ? (1 - PinchTuning.anchorPoint.x) : PinchTuning.anchorPoint.x
-        let anchorY = PinchTuning.anchorPoint.y
-        let tx = (anchorX - 0.5) * bounds.width  * (1 - s)
-        let ty = (anchorY - 0.5) * bounds.height * (1 - s)
-        contentRoot.transform = CGAffineTransform(translationX: tx, y: ty).scaledBy(x: s, y: s)
+            // Blur
+            blurOverlay.alpha = tokens.blurFraction
+            blurAnimator?.fractionComplete = tokens.blurFraction
 
-        // Blur
-        blurOverlay.alpha = tokens.blurFraction
-        blurAnimator?.fractionComplete = tokens.blurFraction
+            // Staggered chat dissolve (top + bottom of the mask).
+            chatMask.colors = [
+                UIColor.black.withAlphaComponent(tokens.chatTopAlpha).cgColor,
+                UIColor.black.withAlphaComponent(tokens.chatBottomAlpha).cgColor
+            ]
 
-        // Staggered chat dissolve (top + bottom of the mask).
-        chatMask.colors = [
-            UIColor.black.withAlphaComponent(tokens.chatTopAlpha).cgColor,
-            UIColor.black.withAlphaComponent(tokens.chatBottomAlpha).cgColor
-        ]
-
-        #if DEBUG
-        assertSimilarity(contentRoot.transform)
-        #endif
+            #if DEBUG
+            assertSimilarity(contentRoot.transform)
+            #endif
+        }
     }
 
     #if DEBUG

@@ -72,7 +72,15 @@ public final class SpringAnimator<T: SpringInterpolatable>: AnimatorProviding wh
 
     var startTime: TimeInterval?
 
-    public init(spring: Spring, value: T.ValueType? = nil, target: T.ValueType? = nil) {
+    /// The display-link coordinator that owns the per-frame tick. Held weakly
+    /// — the composition root owns the controller; animators never extend its lifetime.
+    private weak var controller: AnimationController?
+
+    public init(controller: AnimationController,
+                spring: Spring,
+                value: T.ValueType? = nil,
+                target: T.ValueType? = nil) {
+        self.controller = controller
         self.spring = spring
         self.value = value
         self.target = target
@@ -85,7 +93,7 @@ public final class SpringAnimator<T: SpringInterpolatable>: AnimatorProviding wh
         // target.didSet only sets startTime when state==.running. On first start
         // state is .inactive, so set startTime here or the spring never integrates.
         startTime = CACurrentMediaTime()
-        AnimationController.shared.runPropertyAnimation(self)
+        controller?.runPropertyAnimation(self)
     }
 
     public func stop(immediately: Bool = true) {

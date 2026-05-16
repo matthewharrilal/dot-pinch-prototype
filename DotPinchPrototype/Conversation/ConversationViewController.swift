@@ -25,6 +25,9 @@ final class ConversationViewController: UIViewController {
 
     // MARK: - Injected dependencies
 
+    /// Held strongly because the SpringAnimator only refers to it weakly —
+    /// the VC's lifetime defines how long the display-link coordinator stays alive.
+    private let animationController: AnimationController
     private let animator: SpringAnimator<PinchMorphState>
     private let pinchInteraction: PinchToMemoryInteraction
     private var didInstallInteraction = false
@@ -35,8 +38,10 @@ final class ConversationViewController: UIViewController {
 
     // MARK: - Init
 
-    init(animator: SpringAnimator<PinchMorphState>,
+    init(animationController: AnimationController,
+         animator: SpringAnimator<PinchMorphState>,
          pinchInteraction: PinchToMemoryInteraction) {
+        self.animationController = animationController
         self.animator = animator
         self.pinchInteraction = pinchInteraction
         super.init(nibName: nil, bundle: nil)
@@ -284,10 +289,8 @@ final class ConversationViewController: UIViewController {
         // Shadow is binary, not a function of progress — set only at .finished.
         // Announces object-ness ("card-shaped object"), not depth.
         animator.completion = { [weak self] event in
-            guard let self else { return }
-            if case .finished(let final) = event {
-                CATransaction.begin()
-                CATransaction.setDisableActions(true)
+            guard let self, case .finished(let final) = event else { return }
+            CATransaction.withSuppressedActions {
                 if final.progress >= MorphTiming.completionEpsilon {
                     self.destinationCard.layer.shadowColor = UIColor.black.cgColor
                     self.destinationCard.layer.shadowOffset = Theme.Shadow.cardFinalOffset
@@ -301,27 +304,24 @@ final class ConversationViewController: UIViewController {
                     self.destinationCard.layer.shadowOpacity = 0
                     self.destinationCard.layer.shadowPath = nil
                 }
-                CATransaction.commit()
             }
         }
     }
 
     private func handleAnimatorStateChange(_ state: PinchMorphState) {
         let tokens = ConversationMorphTokens(state: state)
-        CATransaction.begin()
-        CATransaction.setDisableActions(true)
-        defer { CATransaction.commit() }
+        CATransaction.withSuppressedActions {
+            statusLabel.text = "p: \(String(format: "%.3f", state.progress))"
 
-        statusLabel.text = "p: \(String(format: "%.3f", state.progress))"
+            // Single token bundle drives both surfaces — chat content + chrome.
+            conversationView.apply(tokens)
 
-        // Single token bundle drives both surfaces — chat content + chrome.
-        conversationView.apply(tokens)
-
-        destinationCard.alpha = tokens.destinationCardAlpha
-        destinationDate.alpha = tokens.destinationLabelAlpha
-        destinationBody.alpha = tokens.destinationLabelAlpha
-        pinchGlyph.alpha          = tokens.affordanceAlpha
-        menuButton.alpha          = tokens.affordanceAlpha
-        composerPlaceholder.alpha = tokens.composerAlpha
+            destinationCard.alpha     = tokens.destinationCardAlpha
+            destinationDate.alpha     = tokens.destinationLabelAlpha
+            destinationBody.alpha     = tokens.destinationLabelAlpha
+            pinchGlyph.alpha          = tokens.affordanceAlpha
+            menuButton.alpha          = tokens.affordanceAlpha
+            composerPlaceholder.alpha = tokens.composerAlpha
+        }
     }
 }

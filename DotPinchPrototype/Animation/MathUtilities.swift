@@ -56,3 +56,10 @@ public func normalizedVelocity(gestureVelocity: CGFloat, target: CGFloat, curren
 public func clamp<T: Comparable>(_ value: T, _ minValue: T, _ maxValue: T) -> T {
     min(max(value, minValue), maxValue)
 }
+
+/// Linear ramp from 0 → 1 over [start, end]; clamped to [0, 1] outside the range.
+public func ramp(_ value: CGFloat, from start: CGFloat, to end: CGFloat) -> CGFloat {
+    guard value > start else { return 0 }
+    guard value < end else { return 1 }
+    return (value - start) / (end - start)
+}

@@ -320,20 +320,13 @@ final class ConversationViewController: UIViewController {
         //
         // Card silhouette emerges first, then label fades in once silhouette has
         // resolved (eye stops looking for glyphs, starts reading the name).
-        destinationCard.alpha = rampedFrom(p, start: PinchTuning.cardEmergeStart, end: PinchTuning.cardEmergeEnd)
-        let labelAlpha = rampedFrom(p, start: PinchTuning.labelEmergeStart, end: PinchTuning.labelEmergeEnd)
+        destinationCard.alpha = ramp(p, from: PinchTuning.cardEmergeStart, to: PinchTuning.cardEmergeEnd)
+        let labelAlpha = ramp(p, from: PinchTuning.labelEmergeStart, to: PinchTuning.labelEmergeEnd)
         destinationDate.alpha = labelAlpha
         destinationBody.alpha = labelAlpha
 
         pinchGlyph.alpha = state.affordanceAlpha
         menuButton.alpha = state.affordanceAlpha
         composerPlaceholder.alpha = 1 - state.progress
-    }
-
-    /// Linear ramp from 0 → 1 over [start, end], clamped outside.
-    private func rampedFrom(_ p: CGFloat, start: CGFloat, end: CGFloat) -> CGFloat {
-        guard p > start else { return 0 }
-        guard p < end else { return 1 }
-        return (p - start) / (end - start)
     }
 }

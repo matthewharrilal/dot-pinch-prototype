@@ -252,12 +252,13 @@ final class ConversationContentView: UIView {
         // Staggered bottom-up dissolve: bottom alpha fades early (revealing the
         // page's warm-pink), top alpha fades later (revealing cool-grey). The
         // overlap leaves a brief banded transition under blur.
-        let phase = clamp01(
+        let phase = clamp(
             (p - PinchTuning.chatDissolveStart)
-            / (PinchTuning.chatDissolveEnd - PinchTuning.chatDissolveStart)
+            / (PinchTuning.chatDissolveEnd - PinchTuning.chatDissolveStart),
+            0, 1
         )
-        let bottomFade = clamp01(phase / PinchTuning.dissolveBottomFadeFraction)
-        let topFade    = clamp01((phase - PinchTuning.dissolveTopFadeOffset) / PinchTuning.dissolveBottomFadeFraction)
+        let bottomFade = clamp(phase / PinchTuning.dissolveBottomFadeFraction, 0, 1)
+        let topFade    = clamp((phase - PinchTuning.dissolveTopFadeOffset) / PinchTuning.dissolveBottomFadeFraction, 0, 1)
         chatMask.colors = [
             UIColor.black.withAlphaComponent(1 - topFade).cgColor,
             UIColor.black.withAlphaComponent(1 - bottomFade).cgColor
@@ -267,8 +268,6 @@ final class ConversationContentView: UIView {
         assertSimilarity(contentRoot.transform)
         #endif
     }
-
-    private func clamp01(_ x: CGFloat) -> CGFloat { max(0, min(1, x)) }
 
     // Blur is silent below illegibilityRampStart, ramps to peak by
     // illegibilityRampComplete, then holds at peak. The chat's bottom-up

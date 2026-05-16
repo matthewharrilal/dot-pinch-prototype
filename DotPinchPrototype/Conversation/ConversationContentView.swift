@@ -144,16 +144,16 @@ final class ConversationContentView: UIView {
 
         let senderLabel = UILabel()
         senderLabel.text = message.sender
-        senderLabel.font = .systemFont(ofSize: 12, weight: .semibold)
-        senderLabel.textColor = UIColor(white: 0.35, alpha: 1)
+        senderLabel.font = Theme.Typography.bubbleSender
+        senderLabel.textColor = Theme.Text.secondary
         senderLabel.numberOfLines = 1
         senderLabel.translatesAutoresizingMaskIntoConstraints = false
         container.addSubview(senderLabel)
 
         let bodyLabel = UILabel()
         bodyLabel.text = message.body
-        bodyLabel.font = .systemFont(ofSize: 17, weight: .regular)
-        bodyLabel.textColor = UIColor(white: 0.1, alpha: 1)
+        bodyLabel.font = Theme.Typography.bubbleBody
+        bodyLabel.textColor = Theme.Text.primary
         bodyLabel.numberOfLines = 0   // live reflow during morph
         bodyLabel.lineBreakMode = .byWordWrapping
         bodyLabel.translatesAutoresizingMaskIntoConstraints = false
@@ -161,8 +161,8 @@ final class ConversationContentView: UIView {
 
         let timeLabel = UILabel()
         timeLabel.text = message.timestamp
-        timeLabel.font = .systemFont(ofSize: 12, weight: .regular)
-        timeLabel.textColor = UIColor(white: 0.45, alpha: 1)
+        timeLabel.font = Theme.Typography.bubbleTime
+        timeLabel.textColor = Theme.Text.tertiary
         timeLabel.numberOfLines = 1
         timeLabel.translatesAutoresizingMaskIntoConstraints = false
         container.addSubview(timeLabel)

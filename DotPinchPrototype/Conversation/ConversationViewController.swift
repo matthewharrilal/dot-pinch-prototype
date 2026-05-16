@@ -101,35 +101,31 @@ final class ConversationViewController: UIViewController {
         // not from being-bigger.
         destinationCard.translatesAutoresizingMaskIntoConstraints = false
         destinationCard.backgroundColor = Theme.Page.surface
-        destinationCard.layer.cornerRadius = 25
+        destinationCard.layer.cornerRadius = Theme.Radius.card
         destinationCard.layer.cornerCurve = .continuous
         destinationCard.alpha = 0
         destinationCard.isUserInteractionEnabled = false
         view.addSubview(destinationCard)
 
         destinationDate.text = DestinationContent.date
-        destinationDate.font = .systemFont(ofSize: 13, weight: .regular)
-        destinationDate.textColor = UIColor(white: 0.45, alpha: 1)
+        destinationDate.font = Theme.Typography.destinationDate
+        destinationDate.textColor = Theme.Text.tertiary
         destinationDate.alpha = 0
         destinationDate.translatesAutoresizingMaskIntoConstraints = false
         destinationCard.addSubview(destinationDate)
 
-        let serif: UIFont = {
-            let base = UIFont.systemFont(ofSize: 22, weight: .regular)
-            return base.fontDescriptor.withDesign(.serif).map { UIFont(descriptor: $0, size: 22) } ?? base
-        }()
-        destinationBody.font = serif
-        destinationBody.textColor = UIColor(red: 60/255, green: 56/255, blue: 60/255, alpha: 1)
+        destinationBody.font = Theme.Typography.destinationBody
+        destinationBody.textColor = Theme.Text.serifBody
         destinationBody.numberOfLines = 0
         destinationBody.alpha = 0
         destinationBody.translatesAutoresizingMaskIntoConstraints = false
         let para = NSMutableParagraphStyle()
-        para.minimumLineHeight = 28
-        para.maximumLineHeight = 28
+        para.minimumLineHeight = Theme.Typography.destinationBodyLineHeight
+        para.maximumLineHeight = Theme.Typography.destinationBodyLineHeight
         destinationBody.attributedText = NSAttributedString(
             string: DestinationContent.preview,
-            attributes: [.font: serif,
-                         .foregroundColor: UIColor(red: 60/255, green: 56/255, blue: 60/255, alpha: 1),
+            attributes: [.font: Theme.Typography.destinationBody,
+                         .foregroundColor: Theme.Text.serifBody,
                          .paragraphStyle: para]
         )
         destinationCard.addSubview(destinationBody)
@@ -153,19 +149,27 @@ final class ConversationViewController: UIViewController {
     private func installAffordances() {
         pinchGlyph.image = UIImage(
             systemName: SymbolName.pinchAffordance,
-            withConfiguration: UIImage.SymbolConfiguration(pointSize: 18, weight: .light)
+            withConfiguration: UIImage.SymbolConfiguration(
+                pointSize: Theme.Symbol.pinchAffordancePointSize,
+                weight: Theme.Symbol.pinchAffordanceWeight
+            )
         )
-        pinchGlyph.tintColor = UIColor(white: 0.59, alpha: 1)
+        pinchGlyph.tintColor = Theme.Text.glyph
         pinchGlyph.alpha = 0
         pinchGlyph.translatesAutoresizingMaskIntoConstraints = false
         view.addSubview(pinchGlyph)
 
         menuButton.setImage(
-            UIImage(systemName: SymbolName.menu,
-                    withConfiguration: UIImage.SymbolConfiguration(pointSize: 16, weight: .regular)),
+            UIImage(
+                systemName: SymbolName.menu,
+                withConfiguration: UIImage.SymbolConfiguration(
+                    pointSize: Theme.Symbol.menuPointSize,
+                    weight: Theme.Symbol.menuWeight
+                )
+            ),
             for: .normal
         )
-        menuButton.tintColor = UIColor(white: 0.41, alpha: 1)
+        menuButton.tintColor = Theme.Text.glyphSubtle
         menuButton.alpha = 0
         menuButton.translatesAutoresizingMaskIntoConstraints = false
         view.addSubview(menuButton)
@@ -181,14 +185,14 @@ final class ConversationViewController: UIViewController {
     private func installChrome() {
         composerPlaceholder.translatesAutoresizingMaskIntoConstraints = false
         composerPlaceholder.backgroundColor = Theme.Page.surface
-        composerPlaceholder.layer.cornerRadius = 20
+        composerPlaceholder.layer.cornerRadius = Theme.Radius.composer
         composerPlaceholder.layer.cornerCurve = .continuous
         composerPlaceholder.accessibilityIdentifier = AccessibilityID.composerPlaceholder
         view.addSubview(composerPlaceholder)
 
         composerLabel.text = DestinationContent.composerHint
-        composerLabel.font = .systemFont(ofSize: 16, weight: .regular)
-        composerLabel.textColor = UIColor(white: 0.55, alpha: 1)
+        composerLabel.font = Theme.Typography.composerHint
+        composerLabel.textColor = Theme.Text.placeholder
         composerLabel.translatesAutoresizingMaskIntoConstraints = false
         composerPlaceholder.addSubview(composerLabel)
 
@@ -206,8 +210,8 @@ final class ConversationViewController: UIViewController {
 
     private func installStatusLabel() {
         statusLabel.translatesAutoresizingMaskIntoConstraints = false
-        statusLabel.font = .monospacedSystemFont(ofSize: 11, weight: .regular)
-        statusLabel.textColor = UIColor(white: 0.2, alpha: 0.7)
+        statusLabel.font = Theme.Typography.statusLabel
+        statusLabel.textColor = Theme.Text.debug
         statusLabel.numberOfLines = 2
         statusLabel.accessibilityIdentifier = AccessibilityID.statusLabel
         statusLabel.isHidden = true  // dev-only debug surface
@@ -286,9 +290,9 @@ final class ConversationViewController: UIViewController {
                 CATransaction.setDisableActions(true)
                 if final.progress >= 0.999 {
                     self.destinationCard.layer.shadowColor = UIColor.black.cgColor
-                    self.destinationCard.layer.shadowOffset = CGSize(width: 0, height: 1)
-                    self.destinationCard.layer.shadowRadius = 3
-                    self.destinationCard.layer.shadowOpacity = 0.04
+                    self.destinationCard.layer.shadowOffset = Theme.Shadow.cardFinalOffset
+                    self.destinationCard.layer.shadowRadius = Theme.Shadow.cardFinalRadius
+                    self.destinationCard.layer.shadowOpacity = Theme.Shadow.cardFinalOpacity
                     self.destinationCard.layer.shadowPath = UIBezierPath(
                         roundedRect: self.destinationCard.bounds,
                         cornerRadius: self.destinationCard.layer.cornerRadius

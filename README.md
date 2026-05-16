@@ -29,21 +29,51 @@ Tested on iPhone 16 / iOS 18.0. Targets iOS 17+.
 
 ```
 DotPinchPrototype/
-├── App/                  AppDelegate
-├── Conversation/         Chat surface + destination card + chrome
-├── Gestures/             Pinch interaction, PinchMorphState, PinchTuning
-├── Animation/            Spring kit (Spring, SpringAnimator, AnimationController, …)
+├── App/                  AppDelegate + ConversationComposer (composition root)
+├── Conversation/         Feature UI + render-token derivation
+│   ├── ConversationViewController.swift
+│   ├── ConversationContentView.swift
+│   ├── ChatBubbleView.swift
+│   ├── ConversationMorphTokens.swift   ← single source of every progress-derived render value
+│   └── MorphTiming.swift               ← visual-timing constants
+├── Gestures/             Pinch interaction
+│   ├── PinchToMemoryInteraction.swift
+│   ├── PinchMorphState.swift           ← just `progress` (spring-interpolable)
+│   └── PinchTuning.swift               ← gesture-physics constants
+├── Animation/            Reusable spring kit (Wave-derived)
+│   ├── Spring.swift / SpringAnimator.swift / SpringInterpolatable.swift
+│   ├── AnimationController.swift
+│   └── MathUtilities.swift
 ├── DesignSystem/         Theme tokens, AccessibilityID, SymbolName
 └── Placeholders/         Static chat transcript + destination preview text
 ```
 
-- **`Animation/`** is feature-independent. It could be a Swift package as-is.
-- **`Gestures/PinchTuning.swift`** is the single source of truth for every
-  morph-progress threshold and tuning constant.
-- **`Theme.Page.surface`** is the structural invariant: the page-gradient
-  middle stop, destination card fill, and composer fill all read from it.
-  That's what makes the card look like the page material with edges rather
-  than a separate object.
+The shape of the data flow:
+
+```
+UIPinchGestureRecognizer
+        │
+        ▼
+PinchToMemoryInteraction  (writes scalar progress)
+        │
+        ▼
+SpringAnimator<PinchMorphState>  (integrates progress through spring physics)
+        │
+        ▼  animator.valueChanged
+ConversationViewController
+        │
+        ▼
+ConversationMorphTokens(state:)   ← derives every visual property in one place
+        │
+        ▼
+[ ConversationContentView, destinationCard, affordances, composer ]   ← pure projection
+```
+
+`ConversationMorphTokens` is the lens: every progress-derived visual property
+(blur fraction, chat mask alphas, card emergence, label emergence, affordance
+alpha, composer fade) is computed in one pure function with zero UIKit
+dependency. The view layer reads tokens off the bundle and writes them to
+view properties. No curve math lives in views.
 
 ---
 
@@ -54,7 +84,7 @@ The mechanic suppresses every depth cue that would make the morph read as
 
 | # | Refusal | Where it lives |
 |---|---|---|
-| 1 | Uniform scale, no foreshortening | `ConversationContentView.setTimelineCompression` — `sx = sy` from `PinchTuning` |
+| 1 | Uniform scale, no foreshortening | `ConversationMorphTokens.similarityScale` — `sx = sy` |
 | 2 | Photometric continuity (card = page material) | `Theme.Page.surface` reused across gradient middle, card, composer |
 | 3 | No parallax | chrome views are siblings of the card, never children |
 | 4 | Binary shadow | set only at `.finished`, never animated |
@@ -68,9 +98,14 @@ The mechanic suppresses every depth cue that would make the morph read as
 
 ## Tuning
 
-Visual feel is tuned via `Gestures/PinchTuning.swift` — blur ramp, dissolve
-windows, alpha ramps, gesture sensitivity, spring response/damping. No
-morph-progress numeric literal appears anywhere else in the codebase.
+Two cohesion-aligned files:
+
+- **`Gestures/PinchTuning.swift`** — gesture physics (sensitivity, rubber-band,
+  spring response/damping, commit threshold). Reusable across morphs.
+- **`Conversation/MorphTiming.swift`** — visual choreography (blur ramps,
+  dissolve windows, alpha emergence ranges). This feature's feel.
+
+No morph-progress numeric literal appears inline in the rest of the codebase.
 
 ---
 
@@ -96,6 +131,13 @@ iOS 26+ sims.
 
 ## Status
 
-Prototype. The mechanic, staged figure relay, and design-token invariants
-are in place. The substrate is reusable but hasn't been factored into a
-Swift package. There are no unit tests yet.
+Prototype. The mechanic, staged figure relay, render-token bundle, and
+design-token invariants are in place. There are no unit tests yet.
+
+### Future considerations
+
+- **`Animation/` as a Swift package.** The folder is fully feature-independent
+  (imports only Foundation / QuartzCore / CoreGraphics / UIKit). When this UX
+  is ready to ship as a reusable component, the natural next step is
+  `swift package init`-ing it as e.g. `PinchSpringKit` so consumers can
+  depend on the substrate without the demo feature.

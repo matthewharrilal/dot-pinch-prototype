@@ -87,9 +87,9 @@ final class ConversationContentView: UIView {
         scrollView.addSubview(contentView)
 
         for past in ChatTranscript.past {
-            contentView.addArrangedSubview(Self.makeBubble(for: past))
+            contentView.addArrangedSubview(ChatBubbleView(message: past))
         }
-        contentView.addArrangedSubview(Self.makeBubble(for: ChatTranscript.current))
+        contentView.addArrangedSubview(ChatBubbleView(message: ChatTranscript.current))
 
         NSLayoutConstraint.activate([
             contentRoot.topAnchor.constraint(equalTo: topAnchor),
@@ -133,56 +133,6 @@ final class ConversationContentView: UIView {
         animator.pausesOnCompletion = true
         animator.fractionComplete = 0
         self.blurAnimator = animator
-    }
-
-    // MARK: - Bubble factory
-
-    private static func makeBubble(for message: ChatMessage) -> UIView {
-        let container = UIView()
-        container.translatesAutoresizingMaskIntoConstraints = false
-        container.backgroundColor = .clear
-
-        let senderLabel = UILabel()
-        senderLabel.text = message.sender
-        senderLabel.font = Theme.Typography.bubbleSender
-        senderLabel.textColor = Theme.Text.secondary
-        senderLabel.numberOfLines = 1
-        senderLabel.translatesAutoresizingMaskIntoConstraints = false
-        container.addSubview(senderLabel)
-
-        let bodyLabel = UILabel()
-        bodyLabel.text = message.body
-        bodyLabel.font = Theme.Typography.bubbleBody
-        bodyLabel.textColor = Theme.Text.primary
-        bodyLabel.numberOfLines = 0   // live reflow during morph
-        bodyLabel.lineBreakMode = .byWordWrapping
-        bodyLabel.translatesAutoresizingMaskIntoConstraints = false
-        container.addSubview(bodyLabel)
-
-        let timeLabel = UILabel()
-        timeLabel.text = message.timestamp
-        timeLabel.font = Theme.Typography.bubbleTime
-        timeLabel.textColor = Theme.Text.tertiary
-        timeLabel.numberOfLines = 1
-        timeLabel.translatesAutoresizingMaskIntoConstraints = false
-        container.addSubview(timeLabel)
-
-        NSLayoutConstraint.activate([
-            senderLabel.topAnchor.constraint(equalTo: container.topAnchor, constant: 8),
-            senderLabel.leadingAnchor.constraint(equalTo: container.leadingAnchor, constant: 4),
-            senderLabel.trailingAnchor.constraint(lessThanOrEqualTo: container.trailingAnchor, constant: -4),
-
-            bodyLabel.topAnchor.constraint(equalTo: senderLabel.bottomAnchor, constant: 4),
-            bodyLabel.leadingAnchor.constraint(equalTo: container.leadingAnchor, constant: 4),
-            bodyLabel.trailingAnchor.constraint(equalTo: container.trailingAnchor, constant: -4),
-
-            timeLabel.topAnchor.constraint(equalTo: bodyLabel.bottomAnchor, constant: 4),
-            timeLabel.leadingAnchor.constraint(equalTo: container.leadingAnchor, constant: 4),
-            timeLabel.trailingAnchor.constraint(lessThanOrEqualTo: container.trailingAnchor, constant: -4),
-            timeLabel.bottomAnchor.constraint(equalTo: container.bottomAnchor, constant: -8)
-        ])
-
-        return container
     }
 
     // MARK: - Layout

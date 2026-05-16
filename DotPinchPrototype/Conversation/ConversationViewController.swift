@@ -1,11 +1,11 @@
-// Composition root. Chrome views are siblings of the chat surface, never children
-// (Refusal #3 + #7). The subview hierarchy is built once in viewDidLoad and never
-// reordered (Refusal #8). animator.valueChanged is the single writer of progress-
-// derived view state.
+// Composition root for the Conversation feature. Chrome views are siblings of
+// the chat surface, never children (Refusal #3 + #7). The subview hierarchy is
+// built once in viewDidLoad and never reordered (Refusal #8). animator.valueChanged
+// is the single writer of progress-derived view state.
 
 import UIKit
 
-final class DemoViewController: UIViewController {
+final class ConversationViewController: UIViewController {
 
     // MARK: - Layer hierarchy
 
@@ -50,7 +50,7 @@ final class DemoViewController: UIViewController {
     override func viewDidLoad() {
         super.viewDidLoad()
         view.backgroundColor = Theme.Page.surface
-        view.accessibilityIdentifier = "DemoRoot"
+        view.accessibilityIdentifier = AccessibilityID.demoRoot
 
         installPageGradient()
         installViewHierarchy()
@@ -107,7 +107,7 @@ final class DemoViewController: UIViewController {
         destinationCard.isUserInteractionEnabled = false
         view.addSubview(destinationCard)
 
-        destinationDate.text = "Mon, Jul 1"
+        destinationDate.text = DestinationContent.date
         destinationDate.font = .systemFont(ofSize: 13, weight: .regular)
         destinationDate.textColor = UIColor(white: 0.45, alpha: 1)
         destinationDate.alpha = 0
@@ -127,7 +127,7 @@ final class DemoViewController: UIViewController {
         para.minimumLineHeight = 28
         para.maximumLineHeight = 28
         destinationBody.attributedText = NSAttributedString(
-            string: "Good morning check-in, daily exercise nudge, 20-minute workout suggestions",
+            string: DestinationContent.preview,
             attributes: [.font: serif,
                          .foregroundColor: UIColor(red: 60/255, green: 56/255, blue: 60/255, alpha: 1),
                          .paragraphStyle: para]
@@ -152,7 +152,7 @@ final class DemoViewController: UIViewController {
     // Affordance icons — siblings of the card; alpha rides on state.affordanceAlpha.
     private func installAffordances() {
         pinchGlyph.image = UIImage(
-            systemName: "arrow.down.right.and.arrow.up.left",
+            systemName: SymbolName.pinchAffordance,
             withConfiguration: UIImage.SymbolConfiguration(pointSize: 18, weight: .light)
         )
         pinchGlyph.tintColor = UIColor(white: 0.59, alpha: 1)
@@ -161,7 +161,7 @@ final class DemoViewController: UIViewController {
         view.addSubview(pinchGlyph)
 
         menuButton.setImage(
-            UIImage(systemName: "ellipsis",
+            UIImage(systemName: SymbolName.menu,
                     withConfiguration: UIImage.SymbolConfiguration(pointSize: 16, weight: .regular)),
             for: .normal
         )
@@ -183,10 +183,10 @@ final class DemoViewController: UIViewController {
         composerPlaceholder.backgroundColor = Theme.Page.surface
         composerPlaceholder.layer.cornerRadius = 20
         composerPlaceholder.layer.cornerCurve = .continuous
-        composerPlaceholder.accessibilityIdentifier = "ComposerPlaceholder"
+        composerPlaceholder.accessibilityIdentifier = AccessibilityID.composerPlaceholder
         view.addSubview(composerPlaceholder)
 
-        composerLabel.text = "Share with Dot…"
+        composerLabel.text = DestinationContent.composerHint
         composerLabel.font = .systemFont(ofSize: 16, weight: .regular)
         composerLabel.textColor = UIColor(white: 0.55, alpha: 1)
         composerLabel.translatesAutoresizingMaskIntoConstraints = false
@@ -209,7 +209,7 @@ final class DemoViewController: UIViewController {
         statusLabel.font = .monospacedSystemFont(ofSize: 11, weight: .regular)
         statusLabel.textColor = UIColor(white: 0.2, alpha: 0.7)
         statusLabel.numberOfLines = 2
-        statusLabel.accessibilityIdentifier = "StatusLabel"
+        statusLabel.accessibilityIdentifier = AccessibilityID.statusLabel
         statusLabel.isHidden = true  // dev-only debug surface
         view.addSubview(statusLabel)
         NSLayoutConstraint.activate([

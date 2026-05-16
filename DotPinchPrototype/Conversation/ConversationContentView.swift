@@ -9,15 +9,6 @@ import UIKit
 
 final class ConversationContentView: UIView {
 
-    // MARK: - Public types
-
-    /// Plain data for one message bubble in the timeline.
-    struct MessageData {
-        let sender: String
-        let body: String
-        let timestamp: String
-    }
-
     // MARK: - Subviews
 
     /// Chat-surface internal gradient: cool-top (L=92%) → warm-bottom (L=95%).
@@ -41,45 +32,6 @@ final class ConversationContentView: UIView {
     /// is at the top of the visible area (past messages offscreen above).
     private var baselineOffsetY: CGFloat = 0
     private var didCaptureBaseline = false
-
-    // MARK: - Static data
-
-    /// Five placeholder past messages (chronological, earliest first).
-    /// Timestamps precede the current message's "Mon, Jul 1 at 3:12 AM".
-    private static let pastMessages: [MessageData] = [
-        MessageData(
-            sender: "Assistant",
-            body: "Hey, hope you slept okay. I'll send a gentle nudge in a bit about today's movement check-in.",
-            timestamp: "Mon, Jul 1 at 3:00 AM"
-        ),
-        MessageData(
-            sender: "You",
-            body: "Awake. Couldn't sleep again. Mind a little loud tonight.",
-            timestamp: "Mon, Jul 1 at 3:02 AM"
-        ),
-        MessageData(
-            sender: "Assistant",
-            body: "That sounds rough. Want to try a slow breath together, or just sit with the quiet for a minute first?",
-            timestamp: "Mon, Jul 1 at 3:05 AM"
-        ),
-        MessageData(
-            sender: "You",
-            body: "Just sit. I'm okay. Maybe I'll try a walk when it gets light.",
-            timestamp: "Mon, Jul 1 at 3:08 AM"
-        ),
-        MessageData(
-            sender: "Assistant",
-            body: "A short walk at dawn sounds restorative. I'll check in with the daily-movement nudge in a few minutes — feel free to ignore it if the walk feels like enough.",
-            timestamp: "Mon, Jul 1 at 3:10 AM"
-        )
-    ]
-
-    /// The single current message — preserved verbatim from the previous implementation.
-    private static let currentMessage = MessageData(
-        sender: "Assistant",
-        body: "Good morning! Just a quick check-in about your daily exercise goal. I know it's early, but a 20-minute workout can really kickstart your Monday. Whether it's a brisk walk, some stretching, or a quick home workout, it's a great way to energize yourself for the week ahead.",
-        timestamp: "Mon, Jul 1 at 3:12 AM"
-    )
 
     // MARK: - Init
 
@@ -110,7 +62,7 @@ final class ConversationContentView: UIView {
 
         // No cornerRadius — the chat surface has no edge identity at Stage 1.
         clipsToBounds = true
-        accessibilityIdentifier = "ConversationSurface"
+        accessibilityIdentifier = AccessibilityID.conversationSurface
 
         contentRoot.translatesAutoresizingMaskIntoConstraints = false
         contentRoot.backgroundColor = .clear
@@ -134,10 +86,10 @@ final class ConversationContentView: UIView {
         contentView.translatesAutoresizingMaskIntoConstraints = false
         scrollView.addSubview(contentView)
 
-        for past in Self.pastMessages {
+        for past in ChatTranscript.past {
             contentView.addArrangedSubview(Self.makeBubble(for: past))
         }
-        contentView.addArrangedSubview(Self.makeBubble(for: Self.currentMessage))
+        contentView.addArrangedSubview(Self.makeBubble(for: ChatTranscript.current))
 
         NSLayoutConstraint.activate([
             contentRoot.topAnchor.constraint(equalTo: topAnchor),
@@ -185,7 +137,7 @@ final class ConversationContentView: UIView {
 
     // MARK: - Bubble factory
 
-    private static func makeBubble(for message: MessageData) -> UIView {
+    private static func makeBubble(for message: ChatMessage) -> UIView {
         let container = UIView()
         container.translatesAutoresizingMaskIntoConstraints = false
         container.backgroundColor = .clear

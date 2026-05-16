@@ -1,32 +1,10 @@
-//
-//  UIMathUtilities.swift
-//  DotPinchPrototype
-//
-//  Math primitives bottled from Wave's UIMathUtilities and WWDC 2018 Session 803.
-//
-//   • NINETY-pinch-E16  Rubber-banding lives in the public math kit, not buried in the
-//                       animator. The c = 0.55 damping coefficient is Apple's exact
-//                       UIScrollView value — recovered from observation by Janum and
-//                       embedded here as Manifestation B (NINETY-pinch-B01).
-//
-//   • NINETY-pinch-E17  Projection — closed-form integral of exponential velocity decay.
-//                       Used to decide commit-vs-revert at gesture release: project where
-//                       momentum would carry the value, compare against threshold.
-//
-//   • NINETY-pinch-A03  Velocity normalization. The WWDC 2018 fluid-interfaces formula:
-//                       relativeVelocity = gestureVelocity / (target - current)
-//                       Normalizes the gesture's velocity to the remaining animation
-//                       distance so the spring's `initialVelocity` parameter receives the
-//                       right dimensionless ratio.
-//
+// Math primitives bottled from Wave's UIMathUtilities and WWDC 2018 Session 803:
+// rubber-band damping, projection, velocity normalization, clamping.
 
 import Foundation
 import CoreGraphics
 
-/// Rubber-band damping for out-of-range values.
-///
-/// The 0.55 coefficient is UIScrollView's exact tuning, recovered by Janum and exposed
-/// publicly via Wave. Match it everywhere edge-resistance is needed; do not approximate.
+/// Rubber-band damping for out-of-range values. c=0.55 matches UIScrollView.
 public func rubberband(
     value: CGFloat,
     range: ClosedRange<CGFloat>,

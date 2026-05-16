@@ -1,17 +1,5 @@
-//
-//  SpringInterpolatable.swift
-//  DotPinchPrototype
-//
-//  NINETY-pinch-EP5: Physics is a public-API protocol, not a private framework dependency.
-//
-//  Wave's most generous architectural position: any custom struct can participate in spring
-//  physics by conforming to this protocol. The substrate is generic; the value type is
-//  developer-extensible. PinchMorphState (see State/PinchMorphState.swift) conforms to drive
-//  the morph as ONE composite spring rather than four parallel ones.
-//
-//  Adapted from jtrivedi/Wave (SpringInterpolatable.swift) with citations to
-//  dot-pinch-lens-check/team_findings/wave_philosophy.md.
-//
+// Spring-interpolation protocol. Any struct that conforms can flow through the
+// substrate's spring physics. Adapted from jtrivedi/Wave.
 
 import Foundation
 import CoreGraphics
@@ -25,11 +13,8 @@ public protocol SpringInterpolatable: Equatable {
     associatedtype ValueType: SpringInterpolatable where ValueType.ValueType == ValueType
     associatedtype VelocityType: VelocityProviding
 
-    /// Integrate one timestep of spring physics. Returns the new (value, velocity) pair.
-    ///
-    /// NINETY-pinch-E04: absolute values flowing through physics, NOT progress 0→1.
-    /// The state space is {current value, current velocity, target}. There is no
-    /// "progress" field anywhere in this substrate.
+    /// Integrate one timestep of spring physics. Returns (newValue, newVelocity).
+    /// Absolute values flow through physics — no "progress 0→1" remapping in the substrate.
     static func updateValue(
         spring: Spring,
         value: ValueType,

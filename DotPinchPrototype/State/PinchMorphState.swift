@@ -1,7 +1,5 @@
-// ONE scalar drives the gesture. All visual properties are pure functions of it.
-// The 9 refusals are either (a) functions of progress, (b) binary thresholds,
-// or (c) omissions — code paths that don't exist. Scalar-only state structurally
-// forbids axis decoupling.
+// One scalar drives the morph. Derived visual properties are pure functions of it.
+// Scalar-only state structurally forbids axis decoupling (Refusal #1).
 
 import Foundation
 import CoreGraphics
@@ -17,7 +15,7 @@ public struct PinchMorphState: SpringInterpolatable, VelocityProviding, Equatabl
     public init(progress: CGFloat = 0) { self.progress = progress }
     public static var zero: PinchMorphState { PinchMorphState(progress: 0) }
 
-    /// REFUSAL #1: one scalar, applied to both axes.
+    /// One scalar applied to both axes — the uniform similarity scale.
     public var similarityScale: CGFloat {
         let p = max(0, min(1, progress))
         return PinchTuning.baselineSimilarityS

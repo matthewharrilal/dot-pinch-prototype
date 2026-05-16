@@ -1,33 +1,20 @@
-//
-//  Spring.swift
-//  DotPinchPrototype
-//
-//  Spring parameters struct. Adapted from Wave (jtrivedi/Wave) with citations to the
-//  /lens-check report at github.com/matthewharrilal/ios-animation-frontier/tree/main/dot-pinch-lens-check.
-//
+// Spring parameters. Adapted from jtrivedi/Wave.
 
 import Foundation
 import CoreGraphics
 
 public struct Spring: Equatable {
 
-    /// Damping ratio: 1.0 = critically damped (no overshoot), <1.0 = underdamped (overshoot + ring),
-    /// >1.0 = overdamped (slow asymptotic settle).
-    ///
-    /// NINETY-pinch-D06: Apple's stock UI springs cluster around 0.7–0.85.
-    /// Per the trajectory verdict, today_card primary morph axis ~0.85+ (settled monotonic),
-    /// gradient ~0.6–0.7 (visible overshoot). Different springs per property is canonical.
+    /// Damping ratio: 1.0 = critically damped (no overshoot), <1.0 = underdamped
+    /// (overshoot + ring), >1.0 = overdamped (slow asymptotic settle). Apple's
+    /// stock UI springs cluster around 0.7–0.85.
     public var dampingRatio: CGFloat
 
-    /// Frequency response. Roughly the time (in seconds) the spring takes to settle to its target
-    /// from a unit displacement with no velocity. Smaller = faster + snappier.
-    ///
-    /// Trajectory verdict observed ~1.17s active-phase response on IN expansion (gesture-active),
-    /// ~0.83s settle on release. For canned spring targets: 0.3–0.4s per Apple stock.
+    /// Frequency response — roughly the time (in seconds) the spring takes to
+    /// settle from a unit displacement with no velocity. Smaller = snappier.
     public var response: CGFloat
 
-    /// Mass. Default 1.0 — changes the dynamics' time constants but is usually kept at 1
-    /// and the feel is tuned via stiffness/damping. Wave keeps mass=1; we follow.
+    /// Mass. Kept at 1.0; tune feel via dampingRatio + response.
     public var mass: CGFloat = 1.0
 
     public init(dampingRatio: CGFloat, response: CGFloat, mass: CGFloat = 1.0) {
@@ -50,11 +37,9 @@ public struct Spring: Equatable {
         2 * dampingRatio * sqrt(stiffness * mass)
     }
 
-    /// Closed-form settling time. For underdamped springs, the envelope decays as
-    /// exp(-ζ · ωn · t); solve for t where envelope < `DefaultSettlingPercentage`.
-    ///
-    /// NINETY-pinch-E11: completion is a property of the system's energy, not of a
-    /// single sample's position. Use settling time, not position threshold.
+    /// Closed-form settling time. For underdamped springs the envelope decays
+    /// as exp(-ζ·ωn·t); solve for t where envelope < settlingPercentage.
+    /// Completion is the system's energy reaching zero, not a position threshold.
     public var settlingDuration: TimeInterval {
         guard response > 0 else { return 0 }
         let omegaN = sqrt(stiffness / mass)
@@ -63,15 +48,12 @@ public struct Spring: Equatable {
         let settlingPercentage: CGFloat = 0.0001
 
         if zeta < 1.0 {
-            // Underdamped: amplitude envelope is exp(-zeta * omegaN * t)
             let t = -log(settlingPercentage) / (zeta * omegaN)
             return TimeInterval(t)
         } else {
-            // Critically damped / overdamped: hand-tuned constant from observation.
-            // Wave uses criticallyDampedSettlingTime * 1.25 — we follow.
+            // Critically/overdamped multiplier matches Wave's empirically-tuned value.
             let criticallyDampedSettlingTime = -log(settlingPercentage) / omegaN
             return TimeInterval(criticallyDampedSettlingTime * 1.25)
         }
     }
-
 }

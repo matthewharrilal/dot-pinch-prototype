@@ -1,21 +1,9 @@
+// The chat surface — UIScrollView with N past messages + 1 current message.
+// The chat surface (self) holds station; only contentRoot scales via the 2D
+// similarity transform. Stage 2 dissolves the surface bottom-first under blur,
+// revealing the page's warm-pink before the cool-grey top fades.
 //
-//  ConversationContentView.swift
-//  DotPinchPrototype
-//
-//  The morphing surface's contents — promoted from a static UIStackView to a
-//  UIScrollView holding `PinchTuning.pastMessageCount` past messages + 1 current
-//  message in chronological order (past first, current last).
-//
-//  Baseline state: the current message sits at the top of the visible viewport;
-//  the past messages are laid out ABOVE the viewport (offscreen up).
-//  `setTimelineCompression(_:)` drives `contentOffset.y` downward (negative) to
-//  scroll the contentView so past messages slide IN from above, while
-//  simultaneously fading `contentView.alpha` toward `PinchTuning.contentAlphaFloor`.
-//  Both effects are synchronous (PERCEPTUAL-DEEPENING-CYCLE2.md observations 1–3).
-//
-//  This file does NOT know about gestures or the spring substrate. It exposes a
-//  single progress-driven API and is content to be called by anyone.
-//
+// Knows nothing about gestures or springs — exposes a single progress-driven API.
 
 import UIKit
 
@@ -32,20 +20,20 @@ final class ConversationContentView: UIView {
 
     // MARK: - Subviews
 
-    // The chat surface (self) holds station. Its INTERNAL gradient is cool-top
-    // (L=92%) → warm-bottom (L=95%) — a brighter version of the page gradient.
+    /// Chat-surface internal gradient: cool-top (L=92%) → warm-bottom (L=95%).
+    /// A brighter version of the page gradient — "the page lit up."
     private let chatGradient = CAGradientLayer()
 
-    // Stage 2 staggered dissolve: bottom of chat dissolves FIRST (revealing the
-    // page's warm-pink), top dissolves later (revealing cool-grey). Driven by
-    // CAGradientLayer mask whose top/bottom alpha animate at different rates.
+    /// Stage-2 staggered dissolve mask. Bottom fades first (revealing page's
+    /// warm-pink); top fades later (revealing cool-grey). Driven via the
+    /// gradient layer's top/bottom alpha animating at different rates.
     private let chatMask = CAGradientLayer()
 
     private let contentRoot = UIView()
     private let scrollView = UIScrollView()
     private let contentView = UIStackView()
 
-    // REFUSAL #5: uniform blur. UIVisualEffectView covers full bounds.
+    /// Uniform blur (Refusal #5). UIVisualEffectView covers full bounds.
     private let blurOverlay = UIVisualEffectView(effect: nil)
     private var blurAnimator: UIViewPropertyAnimator?
 
@@ -103,17 +91,13 @@ final class ConversationContentView: UIView {
     required init?(coder: NSCoder) { fatalError() }
 
     private func setUp() {
-        // Chat surface internal gradient: cool top (Theme.Page.surface, L=92%)
-        // → warm bottom (Theme.Chat.bottomTint, L=95%). Brighter than page
-        // gradient at same Y — "the page lit up." Replaces flat backgroundColor.
         chatGradient.colors = [Theme.Chat.topTint.cgColor, Theme.Chat.bottomTint.cgColor]
         chatGradient.locations = [0, 1]
         chatGradient.startPoint = CGPoint(x: 0.5, y: 0)
         chatGradient.endPoint = CGPoint(x: 0.5, y: 1)
         layer.insertSublayer(chatGradient, at: 0)
 
-        // Dissolve mask. colors[0] = top alpha, colors[1] = bottom alpha.
-        // Both start opaque; bottom alpha fades first in Stage 2.
+        // Mask colors[0] = top alpha, colors[1] = bottom alpha. Both start opaque.
         chatMask.colors = [UIColor.black.cgColor, UIColor.black.cgColor]
         chatMask.locations = [0, 1]
         chatMask.startPoint = CGPoint(x: 0.5, y: 0)
@@ -124,11 +108,10 @@ final class ConversationContentView: UIView {
         accessibilityIgnoresInvertColors = true
         tintAdjustmentMode = .normal
 
-        // No cornerRadius on the chat surface — has no edge identity at Stage 1.
+        // No cornerRadius — the chat surface has no edge identity at Stage 1.
         clipsToBounds = true
         accessibilityIdentifier = "ConversationSurface"
 
-        // contentRoot holds the scrollView. It receives the similarity transform.
         contentRoot.translatesAutoresizingMaskIntoConstraints = false
         contentRoot.backgroundColor = .clear
         addSubview(contentRoot)
@@ -175,11 +158,9 @@ final class ConversationContentView: UIView {
         ])
     }
 
-    // MARK: - Blur overlay (REFUSAL #5)
+    // MARK: - Blur overlay
 
     private func installBlurOverlay() {
-        // Single UIVisualEffectView covering full bounds. Uniform sigma across
-        // the card surface — no per-region masks, no radial gradients.
         blurOverlay.translatesAutoresizingMaskIntoConstraints = false
         blurOverlay.isUserInteractionEnabled = false
         blurOverlay.alpha = 0
@@ -191,10 +172,9 @@ final class ConversationContentView: UIView {
             blurOverlay.bottomAnchor.constraint(equalTo: bottomAnchor)
         ])
 
-        // Paused animator scrubber — fractionComplete drives blur intensity.
-        // Stage 2 demands TRUE illegibility (text becomes texture, not content).
-        // .systemThickMaterial is the strongest standard blur — text fully
-        // unreadable at peak.
+        // Paused animator — fractionComplete drives blur intensity.
+        // .systemThickMaterial is the strongest standard blur, used to make text
+        // fully unreadable at Stage 2 peak.
         let animator = UIViewPropertyAnimator(duration: 1, curve: .linear) { [weak self] in
             self?.blurOverlay.effect = UIBlurEffect(style: .systemThickMaterial)
         }
@@ -269,9 +249,6 @@ final class ConversationContentView: UIView {
         let pastBubbles = contentView.arrangedSubviews.prefix(PinchTuning.pastMessageCount)
         let currentBubble = contentView.arrangedSubviews.last
         if pastBubbles.count == PinchTuning.pastMessageCount, !didCaptureBaseline {
-            // Sum the heights of the past bubbles plus the inter-bubble spacing
-            // between them and the current message. Each gap contributes
-            // `contentView.spacing`.
             var heightAbove: CGFloat = 0
             for bubble in pastBubbles {
                 heightAbove += bubble.bounds.height + contentView.spacing
@@ -279,14 +256,11 @@ final class ConversationContentView: UIView {
             if heightAbove > 0 {
                 baselineOffsetY = heightAbove
 
-                // CRITICAL FIX: UIScrollView clamps contentOffset.y to
-                // [0, contentSize.height - bounds.height]. With `bounces=false`
-                // (R-4) the clamp is hard. If the current bubble is shorter
-                // than the viewport, scrolling to baselineOffsetY (≈ past
-                // heights) exceeds maxScroll → scroll clamps short → past
-                // content peeks at the top of the viewport. Add a bottom
-                // contentInset large enough that baselineOffsetY is always
-                // reachable. Inset = viewport - currentBubble + safety margin.
+                // bounces=false hard-clamps contentOffset.y to
+                // [0, contentSize.height - bounds.height]. If the current
+                // bubble is shorter than the viewport, baselineOffsetY would
+                // exceed maxScroll and past content peeks at top. Add bottom
+                // inset so baselineOffsetY is always reachable.
                 let currentH = currentBubble?.bounds.height ?? 0
                 let viewportH = scrollView.bounds.height
                 scrollView.contentInset.bottom = max(0, viewportH - currentH)
@@ -316,27 +290,24 @@ final class ConversationContentView: UIView {
         let tx = (anchorX - 0.5) * bounds.width  * (1 - s)
         let ty = (anchorY - 0.5) * bounds.height * (1 - s)
 
-        // Transform on contentRoot, NOT self. Chat surface holds station.
+        // Transform on contentRoot, not self — the chat surface holds station.
         contentRoot.transform = CGAffineTransform(translationX: tx, y: ty).scaledBy(x: s, y: s)
 
-        // REFUSAL #5: uniform blur driven by scalar plateau curve.
         let blurFraction = blurFractionForProgress(p)
         blurOverlay.alpha = blurFraction
         blurAnimator?.fractionComplete = blurFraction
 
-        // Stage 2: staggered bottom-up dissolve. Bottom alpha fades early
-        // (revealing the page's warm-pink), top alpha fades later (revealing
-        // cool-grey). Overlap leaves a brief banded transition under blur.
+        // Staggered bottom-up dissolve: bottom alpha fades early (revealing the
+        // page's warm-pink), top alpha fades later (revealing cool-grey). The
+        // overlap leaves a brief banded transition under blur.
         let fadeStart: CGFloat = 0.60
         let fadeEnd: CGFloat = 0.75
         let phase = max(0, min(1, (p - fadeStart) / (fadeEnd - fadeStart)))
-        let bottomFade = clamp01(phase / 0.7)               // bottom fades phase 0 → 0.7
-        let topFade    = clamp01((phase - 0.3) / 0.7)        // top fades phase 0.3 → 1.0
-        let topAlpha    = 1 - topFade
-        let bottomAlpha = 1 - bottomFade
+        let bottomFade = clamp01(phase / 0.7)
+        let topFade    = clamp01((phase - 0.3) / 0.7)
         chatMask.colors = [
-            UIColor.black.withAlphaComponent(topAlpha).cgColor,
-            UIColor.black.withAlphaComponent(bottomAlpha).cgColor
+            UIColor.black.withAlphaComponent(1 - topFade).cgColor,
+            UIColor.black.withAlphaComponent(1 - bottomFade).cgColor
         ]
 
         #if DEBUG
@@ -346,11 +317,9 @@ final class ConversationContentView: UIView {
 
     private func clamp01(_ x: CGFloat) -> CGFloat { max(0, min(1, x)) }
 
-    // Register 1: blur = 0 (text fully legible, tracked motion).
-    // Register 2 onset (~p=0.30): SHARP ramp to peak by p=0.40 — this is the
-    // illegibility threshold; blur narrativizes the loss of tracking.
-    // After p=0.40: blur stays at peak; conversationView.alpha fade hides it
-    // in Register 3.
+    // Blur is silent below p=0.30, ramps sharply to peak by p=0.40 (the
+    // illegibility threshold), then holds at peak. The chat's alpha-fade in
+    // Stage 3 hides it before the destination card resolves.
     private func blurFractionForProgress(_ p: CGFloat) -> CGFloat {
         let illegibilityStart: CGFloat = 0.30
         let illegibilityComplete: CGFloat = 0.40
@@ -364,16 +333,10 @@ final class ConversationContentView: UIView {
     #if DEBUG
     private func assertSimilarity(_ t: CGAffineTransform) {
         let eps: CGFloat = 1e-6
-        precondition(abs(t.b) < eps && abs(t.c) < eps, "REFUSAL #1: shear (b=\(t.b), c=\(t.c))")
-        precondition(abs(t.a - t.d) < eps, "REFUSAL #1: anisotropic scale sx=\(t.a) sy=\(t.d)")
+        precondition(abs(t.b) < eps && abs(t.c) < eps, "shear (b=\(t.b), c=\(t.c))")
+        precondition(abs(t.a - t.d) < eps, "anisotropic scale sx=\(t.a) sy=\(t.d)")
     }
     #endif
 }
 
-// MARK: - TimelineCompressible conformance
-// Per IMPL-SPEC §0.4: the protocol abstraction prevents PinchToMemoryInteraction
-// (Interaction layer) from depending on this concrete Demo-layer class. The
-// conformance is empty because setTimelineCompression(_:) already exists above
-// with the matching signature. This declaration lives in the Demo layer (legal
-// upward dependency on Interaction's protocol).
 extension ConversationContentView: TimelineCompressible {}

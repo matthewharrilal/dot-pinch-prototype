@@ -1,5 +1,5 @@
-// Pinch gesture → scalar progress on the single SpringAnimator.
-// Gesture-direct during .changed, spring-driven from .ended with velocity injection.
+// Pinch gesture → scalar progress on the SpringAnimator.
+// Gesture-direct during .changed; spring-driven from .ended with velocity injection.
 
 import UIKit
 import CoreGraphics
@@ -99,8 +99,8 @@ final class PinchToMemoryInteraction: NSObject, UIInteraction {
         let currentProgress = gestureProgress(scale: recognizer.scale)
         let progressVel = progressVelocity(for: recognizer)
         let projectedRest = currentProgress + project(initialVelocity: progressVel, decelerationRate: 0.998)
-        // Commit threshold aligns with illegibility: past Register 2 onset,
-        // releasing means going forward. The eye has already left the chat.
+        // Commit threshold aligns with the illegibility onset — past that point
+        // the eye has already left the chat, so releasing means going forward.
         let shouldCommit = projectedRest > 0.4
         let targetProgress: CGFloat = shouldCommit ? 1.0 : 0.0
         let vNorm = normalizedVelocity(gestureVelocity: progressVel, target: targetProgress, current: currentProgress)
@@ -111,7 +111,7 @@ final class PinchToMemoryInteraction: NSObject, UIInteraction {
         animator.start()
     }
 
-    /// REFUSAL #1: scalar in, scalar out. Direction-respecting via origin.
+    /// Scalar in, scalar out. Direction-respecting via origin polarity.
     private func gestureProgress(scale: CGFloat) -> CGFloat {
         let s = scale / anchorScale
         let isFromBaseline = origin.progress < 0.5

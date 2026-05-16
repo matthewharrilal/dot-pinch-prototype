@@ -1,7 +1,7 @@
-// DemoViewController — composition root.
-// REFUSAL #3 + #7: chrome views are SIBLINGS of the card, never children.
-// REFUSAL #8: subview hierarchy built once in viewDidLoad, never reordered.
-// The animator's valueChanged is the single writer; writes to ONE target (card).
+// Composition root. Chrome views are siblings of the chat surface, never children
+// (Refusal #3 + #7). The subview hierarchy is built once in viewDidLoad and never
+// reordered (Refusal #8). animator.valueChanged is the single writer of progress-
+// derived view state.
 
 import UIKit
 
@@ -49,7 +49,6 @@ final class DemoViewController: UIViewController {
 
     override func viewDidLoad() {
         super.viewDidLoad()
-        // Token: any page-material surface uses Theme.Page.surface (no literals).
         view.backgroundColor = Theme.Page.surface
         view.accessibilityIdentifier = "DemoRoot"
 
@@ -58,10 +57,9 @@ final class DemoViewController: UIViewController {
         wireAnimator()
     }
 
-    // Three-band gradient. Middle stop uses Theme.Page.surface — same token as
-    // conversationView.backgroundColor and composerPlaceholder.backgroundColor.
-    // The card is the gradient's middle band given edges; chromatic continuity
-    // is the structural invariant that produces "card-is-page" identity.
+    // Three-band gradient. Middle stop is Theme.Page.surface — same token as
+    // destination card and composer fills. Chromatic continuity at the middle
+    // band is what makes the card read as "the page material with edges."
     private var pageGradient: CAGradientLayer?
     private func installPageGradient() {
         let g = CAGradientLayer()
@@ -86,9 +84,6 @@ final class DemoViewController: UIViewController {
 
 
 
-
-
-
     // MARK: - View hierarchy setup
 
     private func installViewHierarchy() {
@@ -101,8 +96,8 @@ final class DemoViewController: UIViewController {
     }
 
     private func installDestinationCard() {
-        // Sibling of conversationView. Alpha 0 at baseline; alpha 1 at destination
-        // (after the chat surface has faded). Container emerges from non-existence,
+        // Sibling of conversationView. alpha 0 at baseline → 1 at destination
+        // after the chat surface dissolves. Container emerges from non-existence,
         // not from being-bigger.
         destinationCard.translatesAutoresizingMaskIntoConstraints = false
         destinationCard.backgroundColor = Theme.Page.surface
@@ -154,8 +149,7 @@ final class DemoViewController: UIViewController {
         ])
     }
 
-    // Affordance icons — siblings of the card (REFUSAL #3 + #7).
-    // alpha 0→1 ride on state.affordanceAlpha.
+    // Affordance icons — siblings of the card; alpha rides on state.affordanceAlpha.
     private func installAffordances() {
         pinchGlyph.image = UIImage(
             systemName: "arrow.down.right.and.arrow.up.left",
@@ -186,7 +180,6 @@ final class DemoViewController: UIViewController {
 
     private func installChrome() {
         composerPlaceholder.translatesAutoresizingMaskIntoConstraints = false
-        // Composer is another page-material surface with edges — same token as card.
         composerPlaceholder.backgroundColor = Theme.Page.surface
         composerPlaceholder.layer.cornerRadius = 20
         composerPlaceholder.layer.cornerCurve = .continuous
@@ -258,10 +251,8 @@ final class DemoViewController: UIViewController {
     }
 
     #if DEBUG
-    // Invariant: destination card, composer, and page gradient middle stop all
-    // read Theme.Page.surface. The chat surface is a gradient (different shape)
-    // but its TOP stop must equal Theme.Page.surface so the card-as-page-material
-    // identity holds when the chat dissolves to reveal the card at that brightness.
+    // Invariant: destination card, composer, and page-gradient middle stop all
+    // read Theme.Page.surface — divergence breaks card-as-page-material identity.
     private func assertSurfaceTokenContinuity() {
         let surface = Theme.Page.surface.cgColor.components ?? []
         let card = (destinationCard.backgroundColor ?? .clear).cgColor.components ?? []
@@ -286,15 +277,13 @@ final class DemoViewController: UIViewController {
         animator.valueChanged = { [weak self] state in
             self?.handleAnimatorStateChange(state)
         }
-        // REFUSAL #4: shadow is BINARY, not a function of progress. Set only at
-        // .finished, never animated. Announces type ("card-shaped object"), not depth.
+        // Shadow is binary, not a function of progress — set only at .finished.
+        // Announces object-ness ("card-shaped object"), not depth.
         animator.completion = { [weak self] event in
             guard let self else { return }
             if case .finished(let final) = event {
                 CATransaction.begin()
                 CATransaction.setDisableActions(true)
-                // REFUSAL #4 + Stage 4: shadow announces object-ness on destinationCard
-                // ONLY at settled destination. Binary flip, never animated.
                 if final.progress >= 0.999 {
                     self.destinationCard.layer.shadowColor = UIColor.black.cgColor
                     self.destinationCard.layer.shadowOffset = CGSize(width: 0, height: 1)
@@ -321,14 +310,13 @@ final class DemoViewController: UIViewController {
         statusLabel.text = "p: \(String(format: "%.3f", p))"
         conversationView.setTimelineCompression(p)
 
-        // Stage 3 chat surface dissolve is handled INSIDE conversationView via
-        // a staggered mask (bottom-up). DO NOT also fade conversationView.alpha
+        // The chat surface's own dissolve (staggered top/bottom mask) is driven
+        // inside ConversationContentView. Do NOT also fade conversationView.alpha
         // here — that would double-fade and erase the staggered reveal.
-        // Stage 3: card silhouette emerges — slight overlap with chat fade
-        // leaves a brief no-figure window.
+        //
+        // Card silhouette emerges first, then label fades in once silhouette has
+        // resolved (eye stops looking for glyphs, starts reading the name).
         destinationCard.alpha = rampedFrom(p, start: 0.72, end: 0.85)
-        // Stage 4: label fades in AFTER silhouette resolves — eye stops looking
-        // for glyphs, starts reading the name.
         let labelAlpha = rampedFrom(p, start: 0.85, end: 1.0)
         destinationDate.alpha = labelAlpha
         destinationBody.alpha = labelAlpha

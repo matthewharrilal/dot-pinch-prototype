@@ -1,8 +1,3 @@
-//
-//  AppDelegate.swift
-//  DotPinchPrototype
-//
-
 import UIKit
 
 @main

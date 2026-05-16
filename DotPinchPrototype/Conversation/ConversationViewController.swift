@@ -86,8 +86,6 @@ final class ConversationViewController: UIViewController {
         installInteractionIfNeeded()
     }
 
-
-
     // MARK: - View hierarchy setup
 
     private func installViewHierarchy() {
@@ -290,21 +288,28 @@ final class ConversationViewController: UIViewController {
         // Announces object-ness ("card-shaped object"), not depth.
         animator.completion = { [weak self] event in
             guard let self, case .finished(let final) = event else { return }
-            CATransaction.withSuppressedActions {
-                if final.progress >= MorphTiming.completionEpsilon {
-                    self.destinationCard.layer.shadowColor = UIColor.black.cgColor
-                    self.destinationCard.layer.shadowOffset = Theme.Shadow.cardFinalOffset
-                    self.destinationCard.layer.shadowRadius = Theme.Shadow.cardFinalRadius
-                    self.destinationCard.layer.shadowOpacity = Theme.Shadow.cardFinalOpacity
-                    self.destinationCard.layer.shadowPath = UIBezierPath(
-                        roundedRect: self.destinationCard.bounds,
-                        cornerRadius: self.destinationCard.layer.cornerRadius
-                    ).cgPath
-                } else {
-                    self.destinationCard.layer.shadowOpacity = 0
-                    self.destinationCard.layer.shadowPath = nil
-                }
+            let settled = final.progress >= MorphTiming.completionEpsilon
+            self.applyDestinationShadow(visible: settled)
+        }
+    }
+
+    /// Binary destination-card shadow. Called only from animator.completion;
+    /// never animated, never driven by progress.
+    private func applyDestinationShadow(visible: Bool) {
+        CATransaction.withSuppressedActions {
+            guard visible else {
+                destinationCard.layer.shadowOpacity = 0
+                destinationCard.layer.shadowPath = nil
+                return
             }
+            destinationCard.layer.shadowColor   = UIColor.black.cgColor
+            destinationCard.layer.shadowOffset  = Theme.Shadow.cardFinalOffset
+            destinationCard.layer.shadowRadius  = Theme.Shadow.cardFinalRadius
+            destinationCard.layer.shadowOpacity = Theme.Shadow.cardFinalOpacity
+            destinationCard.layer.shadowPath = UIBezierPath(
+                roundedRect: destinationCard.bounds,
+                cornerRadius: destinationCard.layer.cornerRadius
+            ).cgPath
         }
     }
 

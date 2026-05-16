@@ -3,7 +3,7 @@
 // similarity transform. Stage 2 dissolves the surface bottom-first under blur,
 // revealing the page's warm-pink before the cool-grey top fades.
 //
-// Knows nothing about gestures or springs — exposes a single progress-driven API.
+// Knows nothing about gestures or springs — exposes a single token-driven API.
 
 import UIKit
 
@@ -29,7 +29,7 @@ final class ConversationContentView: UIView {
     private var blurAnimator: UIViewPropertyAnimator?
 
     /// Captured at first layout — `contentOffset.y` at which the current message
-    /// is at the top of the visible area (past messages offscreen above).
+    /// sits at the top of the visible area (past messages offscreen above).
     private var baselineOffsetY: CGFloat = 0
     private var didCaptureBaseline = false
 
@@ -37,12 +37,18 @@ final class ConversationContentView: UIView {
 
     override init(frame: CGRect) {
         super.init(frame: frame)
-        setUp()
+        configureChatSurfaceLayers()
+        configureSelfAppearance()
+        configureContentHierarchy()
+        installBlurOverlay()
+        activateLayoutConstraints()
     }
 
     required init?(coder: NSCoder) { fatalError("init(coder:) is not supported") }
 
-    private func setUp() {
+    // MARK: - Setup
+
+    private func configureChatSurfaceLayers() {
         chatGradient.colors = [Theme.Chat.topTint.cgColor, Theme.Chat.bottomTint.cgColor]
         chatGradient.locations = [0, 1]
         chatGradient.startPoint = CGPoint(x: 0.5, y: 0)
@@ -55,20 +61,21 @@ final class ConversationContentView: UIView {
         chatMask.startPoint = CGPoint(x: 0.5, y: 0)
         chatMask.endPoint = CGPoint(x: 0.5, y: 1)
         layer.mask = chatMask
+    }
 
+    private func configureSelfAppearance() {
         overrideUserInterfaceStyle = .light
         accessibilityIgnoresInvertColors = true
         tintAdjustmentMode = .normal
-
         // No cornerRadius — the chat surface has no edge identity at Stage 1.
         clipsToBounds = true
         accessibilityIdentifier = AccessibilityID.conversationSurface
+    }
 
+    private func configureContentHierarchy() {
         contentRoot.translatesAutoresizingMaskIntoConstraints = false
         contentRoot.backgroundColor = .clear
         addSubview(contentRoot)
-
-        installBlurOverlay()
 
         scrollView.translatesAutoresizingMaskIntoConstraints = false
         scrollView.isScrollEnabled = false
@@ -90,7 +97,9 @@ final class ConversationContentView: UIView {
             contentView.addArrangedSubview(ChatBubbleView(message: past))
         }
         contentView.addArrangedSubview(ChatBubbleView(message: ChatTranscript.current))
+    }
 
+    private func activateLayoutConstraints() {
         NSLayoutConstraint.activate([
             contentRoot.topAnchor.constraint(equalTo: topAnchor),
             contentRoot.leadingAnchor.constraint(equalTo: leadingAnchor),
@@ -141,37 +150,34 @@ final class ConversationContentView: UIView {
         super.layoutSubviews()
         chatGradient.frame = bounds
         chatMask.frame = bounds
+        captureBaselineOffsetIfNeeded()
+    }
 
-        // Capture baseline contentOffset.y on first valid layout. The baseline is
-        // the offset at which the CURRENT message sits at the top of the visible
-        // viewport — i.e., the height occupied by the past messages above it.
-        // After this, the past messages exist in the contentView but live offscreen
-        // above the viewport at baseline.
+    /// On the first valid layout pass, scroll the contentView so the current
+    /// message sits at the top of the visible viewport with past messages
+    /// laid out above it (offscreen at baseline; revealed by the morph).
+    private func captureBaselineOffsetIfNeeded() {
+        guard !didCaptureBaseline else { return }
         layoutIfNeeded()
-        let pastCount = ChatTranscript.past.count
-        let pastBubbles = contentView.arrangedSubviews.prefix(pastCount)
-        let currentBubble = contentView.arrangedSubviews.last
-        if pastBubbles.count == pastCount, !didCaptureBaseline {
-            var heightAbove: CGFloat = 0
-            for bubble in pastBubbles {
-                heightAbove += bubble.bounds.height + contentView.spacing
-            }
-            if heightAbove > 0 {
-                baselineOffsetY = heightAbove
 
-                // bounces=false hard-clamps contentOffset.y to
-                // [0, contentSize.height - bounds.height]. If the current
-                // bubble is shorter than the viewport, baselineOffsetY would
-                // exceed maxScroll and past content peeks at top. Add bottom
-                // inset so baselineOffsetY is always reachable.
-                let currentH = currentBubble?.bounds.height ?? 0
-                let viewportH = scrollView.bounds.height
-                scrollView.contentInset.bottom = max(0, viewportH - currentH)
+        let pastBubbles = contentView.arrangedSubviews.prefix(ChatTranscript.past.count)
+        guard pastBubbles.count == ChatTranscript.past.count else { return }
 
-                scrollView.contentOffset = CGPoint(x: 0, y: baselineOffsetY)
-                didCaptureBaseline = true
-            }
+        let heightAbove = pastBubbles.reduce(into: CGFloat.zero) { sum, bubble in
+            sum += bubble.bounds.height + contentView.spacing
         }
+        guard heightAbove > 0 else { return }
+
+        baselineOffsetY = heightAbove
+
+        // bounces=false hard-clamps contentOffset.y to [0, contentSize.height - bounds.height].
+        // If the current bubble is shorter than the viewport, baselineOffsetY
+        // would exceed maxScroll and past content peeks at top. Add bottom inset
+        // so baselineOffsetY is always reachable.
+        let currentBubbleHeight = contentView.arrangedSubviews.last?.bounds.height ?? 0
+        scrollView.contentInset.bottom = max(0, scrollView.bounds.height - currentBubbleHeight)
+        scrollView.contentOffset = CGPoint(x: 0, y: baselineOffsetY)
+        didCaptureBaseline = true
     }
 
     // MARK: - Public API
@@ -180,20 +186,15 @@ final class ConversationContentView: UIView {
     /// happens here; tokens carry the already-derived values.
     func apply(_ tokens: ConversationMorphTokens) {
         CATransaction.withSuppressedActions {
-            // Geometry — only contentRoot scales; chat surface (self) holds station.
-            let s = tokens.similarityScale
-            let isRTL = effectiveUserInterfaceLayoutDirection == .rightToLeft
-            let anchorX = isRTL ? (1 - PinchTuning.anchorPoint.x) : PinchTuning.anchorPoint.x
-            let anchorY = PinchTuning.anchorPoint.y
-            let tx = (anchorX - 0.5) * bounds.width  * (1 - s)
-            let ty = (anchorY - 0.5) * bounds.height * (1 - s)
-            contentRoot.transform = CGAffineTransform(translationX: tx, y: ty).scaledBy(x: s, y: s)
+            contentRoot.transform = .similarity(
+                scale: tokens.similarityScale,
+                anchor: effectiveAnchorPoint,
+                in: bounds
+            )
 
-            // Blur
             blurOverlay.alpha = tokens.blurFraction
             blurAnimator?.fractionComplete = tokens.blurFraction
 
-            // Staggered chat dissolve (top + bottom of the mask).
             chatMask.colors = [
                 UIColor.black.withAlphaComponent(tokens.chatTopAlpha).cgColor,
                 UIColor.black.withAlphaComponent(tokens.chatBottomAlpha).cgColor
@@ -203,6 +204,13 @@ final class ConversationContentView: UIView {
             assertSimilarity(contentRoot.transform)
             #endif
         }
+    }
+
+    /// PinchTuning's anchor flipped along X for right-to-left layouts.
+    private var effectiveAnchorPoint: CGPoint {
+        let isRTL = effectiveUserInterfaceLayoutDirection == .rightToLeft
+        let x = isRTL ? (1 - PinchTuning.anchorPoint.x) : PinchTuning.anchorPoint.x
+        return CGPoint(x: x, y: PinchTuning.anchorPoint.y)
     }
 
     #if DEBUG

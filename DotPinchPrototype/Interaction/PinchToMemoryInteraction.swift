@@ -98,10 +98,10 @@ final class PinchToMemoryInteraction: NSObject, UIInteraction {
         guard let animator else { return }
         let currentProgress = gestureProgress(scale: recognizer.scale)
         let progressVel = progressVelocity(for: recognizer)
-        let projectedRest = currentProgress + project(initialVelocity: progressVel, decelerationRate: 0.998)
+        let projectedRest = currentProgress + project(initialVelocity: progressVel)
         // Commit threshold aligns with the illegibility onset — past that point
         // the eye has already left the chat, so releasing means going forward.
-        let shouldCommit = projectedRest > 0.4
+        let shouldCommit = projectedRest > PinchTuning.commitProjectionThreshold
         let targetProgress: CGFloat = shouldCommit ? 1.0 : 0.0
         let vNorm = normalizedVelocity(gestureVelocity: progressVel, target: targetProgress, current: currentProgress)
         let injected: CGFloat = (abs(vNorm) < PinchTuning.velocityHandoffFloorPerSecond) ? 0 : vNorm
@@ -118,8 +118,13 @@ final class PinchToMemoryInteraction: NSObject, UIInteraction {
         let signed: CGFloat = isFromBaseline
             ? (1 - s) * PinchTuning.pinchSensitivity
             : (s - 1) * PinchTuning.pinchSensitivity
-        let clamped = clamp(signed, -0.2, 1.2)
-        let progress01 = rubberband(value: clamped, range: 0...1, interval: 0.2, c: PinchTuning.rubberBandDampingC)
+        let clamped = clamp(signed, PinchTuning.gestureClampLowerBound, PinchTuning.gestureClampUpperBound)
+        let progress01 = rubberband(
+            value: clamped,
+            range: 0...1,
+            interval: PinchTuning.rubberBandInterval,
+            c: PinchTuning.rubberBandDampingC
+        )
         return isFromBaseline ? progress01 : (1 - progress01)
     }
 

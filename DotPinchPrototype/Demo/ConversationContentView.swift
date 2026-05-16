@@ -300,11 +300,12 @@ final class ConversationContentView: UIView {
         // Staggered bottom-up dissolve: bottom alpha fades early (revealing the
         // page's warm-pink), top alpha fades later (revealing cool-grey). The
         // overlap leaves a brief banded transition under blur.
-        let fadeStart: CGFloat = 0.60
-        let fadeEnd: CGFloat = 0.75
-        let phase = max(0, min(1, (p - fadeStart) / (fadeEnd - fadeStart)))
-        let bottomFade = clamp01(phase / 0.7)
-        let topFade    = clamp01((phase - 0.3) / 0.7)
+        let phase = clamp01(
+            (p - PinchTuning.chatDissolveStart)
+            / (PinchTuning.chatDissolveEnd - PinchTuning.chatDissolveStart)
+        )
+        let bottomFade = clamp01(phase / PinchTuning.dissolveBottomFadeFraction)
+        let topFade    = clamp01((phase - PinchTuning.dissolveTopFadeOffset) / PinchTuning.dissolveBottomFadeFraction)
         chatMask.colors = [
             UIColor.black.withAlphaComponent(1 - topFade).cgColor,
             UIColor.black.withAlphaComponent(1 - bottomFade).cgColor
@@ -317,16 +318,14 @@ final class ConversationContentView: UIView {
 
     private func clamp01(_ x: CGFloat) -> CGFloat { max(0, min(1, x)) }
 
-    // Blur is silent below p=0.30, ramps sharply to peak by p=0.40 (the
-    // illegibility threshold), then holds at peak. The chat's alpha-fade in
-    // Stage 3 hides it before the destination card resolves.
+    // Blur is silent below illegibilityRampStart, ramps to peak by
+    // illegibilityRampComplete, then holds at peak. The chat's bottom-up
+    // dissolve hides the surface before the destination card resolves.
     private func blurFractionForProgress(_ p: CGFloat) -> CGFloat {
-        let illegibilityStart: CGFloat = 0.30
-        let illegibilityComplete: CGFloat = 0.40
-        if p < illegibilityStart { return 0 }
-        if p < illegibilityComplete {
-            return (p - illegibilityStart) / (illegibilityComplete - illegibilityStart)
-        }
+        let start = PinchTuning.illegibilityRampStart
+        let complete = PinchTuning.illegibilityRampComplete
+        if p < start { return 0 }
+        if p < complete { return (p - start) / (complete - start) }
         return 1
     }
 

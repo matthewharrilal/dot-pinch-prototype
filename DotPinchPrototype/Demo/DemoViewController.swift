@@ -266,10 +266,10 @@ final class DemoViewController: UIViewController {
     #endif
 
     @objc private func handleTapToExpand() {
-        guard (animator.value?.progress ?? 0) >= 0.9 else { return }
+        guard (animator.value?.progress ?? 0) >= PinchTuning.tapToExpandReadyThreshold else { return }
         animator.value = PinchMorphState(progress: 1)
         animator.target = PinchMorphState(progress: 0)
-        animator.velocity = PinchMorphState(progress: -2.0)
+        animator.velocity = PinchMorphState(progress: PinchTuning.tapToExpandKickVelocity)
         animator.start()
     }
 
@@ -316,8 +316,8 @@ final class DemoViewController: UIViewController {
         //
         // Card silhouette emerges first, then label fades in once silhouette has
         // resolved (eye stops looking for glyphs, starts reading the name).
-        destinationCard.alpha = rampedFrom(p, start: 0.72, end: 0.85)
-        let labelAlpha = rampedFrom(p, start: 0.85, end: 1.0)
+        destinationCard.alpha = rampedFrom(p, start: PinchTuning.cardEmergeStart, end: PinchTuning.cardEmergeEnd)
+        let labelAlpha = rampedFrom(p, start: PinchTuning.labelEmergeStart, end: PinchTuning.labelEmergeEnd)
         destinationDate.alpha = labelAlpha
         destinationBody.alpha = labelAlpha
 

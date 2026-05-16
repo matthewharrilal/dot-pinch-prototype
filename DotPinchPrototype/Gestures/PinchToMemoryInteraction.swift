@@ -23,10 +23,13 @@ final class PinchToMemoryInteraction: NSObject, UIInteraction {
         view.addGestureRecognizer(pinch)
     }
 
+    // MARK: - State
+
     private weak var animator: SpringAnimator<PinchMorphState>?
 
     private let pinch = UIPinchGestureRecognizer()
     private var anchorScale: CGFloat = 1.0
+
     /// Origin state at .began. Determines polarity: forward from baseline (0)
     /// versus reverse from destination (1).
     private var origin: PinchMorphState = .zero
@@ -43,32 +46,21 @@ final class PinchToMemoryInteraction: NSObject, UIInteraction {
         pinch.addTarget(self, action: #selector(handlePinch(_:)))
     }
 
-    // MARK: - Gesture handling
+    // MARK: - Gesture lifecycle
 
     @objc private func handlePinch(_ recognizer: UIPinchGestureRecognizer) {
         switch recognizer.state {
-        case .began:
-            handlePinchBegan(recognizer)
-        case .changed:
-            handlePinchChanged(recognizer)
-        case .ended, .cancelled, .failed:
-            handlePinchEnded(recognizer)
-        default:
-            break
+        case .began:                       handlePinchBegan(recognizer)
+        case .changed:                     handlePinchChanged(recognizer)
+        case .ended, .cancelled, .failed:  handlePinchEnded(recognizer)
+        default: break
         }
     }
 
     private func handlePinchBegan(_ recognizer: UIPinchGestureRecognizer) {
         // Reduce Motion: skip the spring path, snap directly to target.
         if shouldUseReducedMotion() {
-            // Toggle between baseline and destination on each pinch attempt.
-            guard let animator else { return }
-            let current = animator.value?.progress ?? 0
-            let target: CGFloat = current < 0.5 ? 1 : 0
-            animator.value = PinchMorphState(progress: target)
-            animator.target = PinchMorphState(progress: target)
-            animator.valueChanged?(PinchMorphState(progress: target))
-            recognizer.state = .cancelled
+            snapToOppositeTarget(via: recognizer)
             return
         }
         anchorScale = recognizer.scale
@@ -78,13 +70,6 @@ final class PinchToMemoryInteraction: NSObject, UIInteraction {
             animator.velocity = .zero
             animator.stop(immediately: true)
         }
-    }
-
-    private func shouldUseReducedMotion() -> Bool {
-        UIAccessibility.isReduceMotionEnabled
-        || UIAccessibility.prefersCrossFadeTransitions
-        || UIAccessibility.isVoiceOverRunning
-        || UIAccessibility.isSwitchControlRunning
     }
 
     private func handlePinchChanged(_ recognizer: UIPinchGestureRecognizer) {
@@ -105,11 +90,34 @@ final class PinchToMemoryInteraction: NSObject, UIInteraction {
         let targetProgress: CGFloat = shouldCommit ? 1.0 : 0.0
         let vNorm = normalizedVelocity(gestureVelocity: progressVel, target: targetProgress, current: currentProgress)
         let injected: CGFloat = (abs(vNorm) < PinchTuning.velocityHandoffFloorPerSecond) ? 0 : vNorm
-        animator.value = PinchMorphState(progress: currentProgress)
-        animator.target = PinchMorphState(progress: targetProgress)
+        animator.value    = PinchMorphState(progress: currentProgress)
+        animator.target   = PinchMorphState(progress: targetProgress)
         animator.velocity = PinchMorphState(progress: injected)
         animator.start()
     }
+
+    // MARK: - Reduce Motion fallback
+
+    private func shouldUseReducedMotion() -> Bool {
+        UIAccessibility.isReduceMotionEnabled
+        || UIAccessibility.prefersCrossFadeTransitions
+        || UIAccessibility.isVoiceOverRunning
+        || UIAccessibility.isSwitchControlRunning
+    }
+
+    /// Toggle directly to whichever endpoint the user is NOT currently sitting at.
+    /// No spring, no gesture-tracking — just a single state write.
+    private func snapToOppositeTarget(via recognizer: UIPinchGestureRecognizer) {
+        guard let animator else { return }
+        let current = animator.value?.progress ?? 0
+        let target: CGFloat = current < 0.5 ? 1 : 0
+        animator.value = PinchMorphState(progress: target)
+        animator.target = PinchMorphState(progress: target)
+        animator.valueChanged?(PinchMorphState(progress: target))
+        recognizer.state = .cancelled
+    }
+
+    // MARK: - Gesture math
 
     /// Scalar in, scalar out. Direction-respecting via origin polarity.
     private func gestureProgress(scale: CGFloat) -> CGFloat {
@@ -127,12 +135,13 @@ final class PinchToMemoryInteraction: NSObject, UIInteraction {
         return isFromBaseline ? progress01 : (1 - progress01)
     }
 
+    /// Convert recognizer.velocity (pinch-scale rate) into normalized
+    /// progress-velocity, respecting polarity.
     private func progressVelocity(for recognizer: UIPinchGestureRecognizer) -> CGFloat {
         let magnitude = abs(recognizer.velocity) * PinchTuning.pinchSensitivity / 2.0
-        if isFromBaseline {
-            return recognizer.velocity < 0 ? magnitude : -magnitude
-        } else {
-            return recognizer.velocity > 0 ? -magnitude : magnitude
-        }
+        let sign: CGFloat = isFromBaseline
+            ? (recognizer.velocity < 0 ? 1 : -1)
+            : (recognizer.velocity > 0 ? -1 : 1)
+        return magnitude * sign
     }
 }

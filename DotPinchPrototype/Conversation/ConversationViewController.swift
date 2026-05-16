@@ -7,7 +7,7 @@ import UIKit
 
 final class ConversationViewController: UIViewController {
 
-    // MARK: - Layer hierarchy
+    // MARK: - Subviews
 
     private let conversationView = ConversationContentView()
     private let composerPlaceholder = UIView()
@@ -16,25 +16,26 @@ final class ConversationViewController: UIViewController {
     private let pinchGlyph = UIImageView()
     private let menuButton = UIButton(type: .system)
 
-    // Stage 3+ object: emerges from non-existence (alpha 0→1) once the chat
-    // surface has surrendered. Container becomes figure only AFTER text gives up
-    // its role. Separate sibling — NOT a scaled version of the chat surface.
+    /// Emerges from non-existence (alpha 0→1) once the chat surface has
+    /// surrendered. Container becomes figure only AFTER text gives up its
+    /// role. Separate sibling — NOT a scaled version of the chat surface.
     private let destinationCard = UIView()
     private let destinationDate = UILabel()
     private let destinationBody = UILabel()
 
-    // MARK: - Injected dependencies
+    // MARK: - Dependencies (injected)
 
-    /// Held strongly because the SpringAnimator only refers to it weakly —
+    /// Held strongly because SpringAnimator holds the controller weakly —
     /// the VC's lifetime defines how long the display-link coordinator stays alive.
     private let animationController: AnimationController
     private let animator: SpringAnimator<PinchMorphState>
     private let pinchInteraction: PinchToMemoryInteraction
-    private var didInstallInteraction = false
 
-    // MARK: - Geometry
+    // MARK: - Layout state
 
     private var fullscreenRect: CGRect = .zero
+    private var pageGradient: CAGradientLayer?
+    private var didInstallInteraction = false
 
     // MARK: - Init
 
@@ -61,10 +62,17 @@ final class ConversationViewController: UIViewController {
         wireAnimator()
     }
 
-    // Three-band gradient. Middle stop is Theme.Page.surface — same token as
-    // destination card and composer fills. Chromatic continuity at the middle
-    // band is what makes the card read as "the page material with edges."
-    private var pageGradient: CAGradientLayer?
+    override func viewDidLayoutSubviews() {
+        super.viewDidLayoutSubviews()
+        layOutGeometry()
+        installInteractionIfNeeded()
+    }
+
+    // MARK: - View hierarchy setup
+
+    /// Three-band gradient. Middle stop is Theme.Page.surface — same token as
+    /// destination card and composer fills. Chromatic continuity at the middle
+    /// band is what makes the card read as "the page material with edges."
     private func installPageGradient() {
         let g = CAGradientLayer()
         g.colors = [
@@ -80,14 +88,6 @@ final class ConversationViewController: UIViewController {
         pageGradient = g
     }
 
-    override func viewDidLayoutSubviews() {
-        super.viewDidLayoutSubviews()
-        layOutGeometry()
-        installInteractionIfNeeded()
-    }
-
-    // MARK: - View hierarchy setup
-
     private func installViewHierarchy() {
         conversationView.translatesAutoresizingMaskIntoConstraints = true
         view.addSubview(conversationView)
@@ -98,9 +98,6 @@ final class ConversationViewController: UIViewController {
     }
 
     private func installDestinationCard() {
-        // Sibling of conversationView. alpha 0 at baseline → 1 at destination
-        // after the chat surface dissolves. Container emerges from non-existence,
-        // not from being-bigger.
         destinationCard.translatesAutoresizingMaskIntoConstraints = false
         destinationCard.backgroundColor = Theme.Page.surface
         destinationCard.layer.cornerRadius = Theme.Radius.card
@@ -147,43 +144,6 @@ final class ConversationViewController: UIViewController {
         ])
     }
 
-    // Affordance icons — siblings of the card; alpha rides on state.affordanceAlpha.
-    private func installAffordances() {
-        pinchGlyph.image = UIImage(
-            systemName: SymbolName.pinchAffordance,
-            withConfiguration: UIImage.SymbolConfiguration(
-                pointSize: Theme.Symbol.pinchAffordancePointSize,
-                weight: Theme.Symbol.pinchAffordanceWeight
-            )
-        )
-        pinchGlyph.tintColor = Theme.Text.glyph
-        pinchGlyph.alpha = 0
-        pinchGlyph.translatesAutoresizingMaskIntoConstraints = false
-        view.addSubview(pinchGlyph)
-
-        menuButton.setImage(
-            UIImage(
-                systemName: SymbolName.menu,
-                withConfiguration: UIImage.SymbolConfiguration(
-                    pointSize: Theme.Symbol.menuPointSize,
-                    weight: Theme.Symbol.menuWeight
-                )
-            ),
-            for: .normal
-        )
-        menuButton.tintColor = Theme.Text.glyphSubtle
-        menuButton.alpha = 0
-        menuButton.translatesAutoresizingMaskIntoConstraints = false
-        view.addSubview(menuButton)
-
-        NSLayoutConstraint.activate([
-            pinchGlyph.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 28),
-            pinchGlyph.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor, constant: 16),
-            menuButton.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -28),
-            menuButton.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor, constant: 14)
-        ])
-    }
-
     private func installChrome() {
         composerPlaceholder.translatesAutoresizingMaskIntoConstraints = false
         composerPlaceholder.backgroundColor = Theme.Page.surface
@@ -225,7 +185,44 @@ final class ConversationViewController: UIViewController {
         ])
     }
 
-    // MARK: - Geometry layout
+    /// Affordance icons — siblings of the card; alpha rides on tokens.affordanceAlpha.
+    private func installAffordances() {
+        pinchGlyph.image = UIImage(
+            systemName: SymbolName.pinchAffordance,
+            withConfiguration: UIImage.SymbolConfiguration(
+                pointSize: Theme.Symbol.pinchAffordancePointSize,
+                weight: Theme.Symbol.pinchAffordanceWeight
+            )
+        )
+        pinchGlyph.tintColor = Theme.Text.glyph
+        pinchGlyph.alpha = 0
+        pinchGlyph.translatesAutoresizingMaskIntoConstraints = false
+        view.addSubview(pinchGlyph)
+
+        menuButton.setImage(
+            UIImage(
+                systemName: SymbolName.menu,
+                withConfiguration: UIImage.SymbolConfiguration(
+                    pointSize: Theme.Symbol.menuPointSize,
+                    weight: Theme.Symbol.menuWeight
+                )
+            ),
+            for: .normal
+        )
+        menuButton.tintColor = Theme.Text.glyphSubtle
+        menuButton.alpha = 0
+        menuButton.translatesAutoresizingMaskIntoConstraints = false
+        view.addSubview(menuButton)
+
+        NSLayoutConstraint.activate([
+            pinchGlyph.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 28),
+            pinchGlyph.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor, constant: 16),
+            menuButton.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -28),
+            menuButton.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor, constant: 14)
+        ])
+    }
+
+    // MARK: - Geometry
 
     private func layOutGeometry() {
         fullscreenRect = view.bounds
@@ -236,14 +233,14 @@ final class ConversationViewController: UIViewController {
         }
     }
 
-    // MARK: - Interaction install
+    // MARK: - Interaction
 
     private func installInteractionIfNeeded() {
         guard !didInstallInteraction, fullscreenRect != .zero else { return }
         #if DEBUG
         assertSurfaceTokenContinuity()
         #endif
-        let baseline = PinchMorphState(progress: 0)
+        let baseline = PinchMorphState.zero
         animator.value = baseline
         animator.target = baseline
         handleAnimatorStateChange(baseline)
@@ -255,23 +252,6 @@ final class ConversationViewController: UIViewController {
         conversationView.addGestureRecognizer(tap)
     }
 
-    #if DEBUG
-    // Invariant: destination card, composer, and page-gradient middle stop all
-    // read Theme.Page.surface — divergence breaks card-as-page-material identity.
-    private func assertSurfaceTokenContinuity() {
-        let surface = Theme.Page.surface.cgColor.components ?? []
-        let card = (destinationCard.backgroundColor ?? .clear).cgColor.components ?? []
-        let composer = (composerPlaceholder.backgroundColor ?? .clear).cgColor.components ?? []
-
-        let gradientStops = (pageGradient?.colors as? [CGColor]) ?? []
-        let middle = gradientStops.dropFirst().first?.components ?? []
-
-        assert(card == surface,     "Destination card surface diverged from Theme.Page.surface")
-        assert(composer == surface, "Composer surface diverged from Theme.Page.surface")
-        assert(middle == surface,   "Gradient middle stop diverged from Theme.Page.surface")
-    }
-    #endif
-
     @objc private func handleTapToExpand() {
         guard (animator.value?.progress ?? 0) >= PinchTuning.tapToExpandReadyThreshold else { return }
         animator.value = PinchMorphState(progress: 1)
@@ -279,6 +259,8 @@ final class ConversationViewController: UIViewController {
         animator.velocity = PinchMorphState(progress: PinchTuning.tapToExpandKickVelocity)
         animator.start()
     }
+
+    // MARK: - Animator wiring
 
     private func wireAnimator() {
         animator.valueChanged = { [weak self] state in
@@ -290,6 +272,23 @@ final class ConversationViewController: UIViewController {
             guard let self, case .finished(let final) = event else { return }
             let settled = final.progress >= MorphTiming.completionEpsilon
             self.applyDestinationShadow(visible: settled)
+        }
+    }
+
+    private func handleAnimatorStateChange(_ state: PinchMorphState) {
+        let tokens = ConversationMorphTokens(state: state)
+        CATransaction.withSuppressedActions {
+            statusLabel.text = "p: \(String(format: "%.3f", state.progress))"
+
+            // Single token bundle drives both surfaces — chat content + chrome.
+            conversationView.apply(tokens)
+
+            destinationCard.alpha     = tokens.destinationCardAlpha
+            destinationDate.alpha     = tokens.destinationLabelAlpha
+            destinationBody.alpha     = tokens.destinationLabelAlpha
+            pinchGlyph.alpha          = tokens.affordanceAlpha
+            menuButton.alpha          = tokens.affordanceAlpha
+            composerPlaceholder.alpha = tokens.composerAlpha
         }
     }
 
@@ -313,20 +312,22 @@ final class ConversationViewController: UIViewController {
         }
     }
 
-    private func handleAnimatorStateChange(_ state: PinchMorphState) {
-        let tokens = ConversationMorphTokens(state: state)
-        CATransaction.withSuppressedActions {
-            statusLabel.text = "p: \(String(format: "%.3f", state.progress))"
+    // MARK: - DEBUG invariants
 
-            // Single token bundle drives both surfaces — chat content + chrome.
-            conversationView.apply(tokens)
+    #if DEBUG
+    /// Invariant: destination card, composer, and page-gradient middle stop all
+    /// read Theme.Page.surface — divergence breaks card-as-page-material identity.
+    private func assertSurfaceTokenContinuity() {
+        let surface = Theme.Page.surface.cgColor.components ?? []
+        let card = (destinationCard.backgroundColor ?? .clear).cgColor.components ?? []
+        let composer = (composerPlaceholder.backgroundColor ?? .clear).cgColor.components ?? []
 
-            destinationCard.alpha     = tokens.destinationCardAlpha
-            destinationDate.alpha     = tokens.destinationLabelAlpha
-            destinationBody.alpha     = tokens.destinationLabelAlpha
-            pinchGlyph.alpha          = tokens.affordanceAlpha
-            menuButton.alpha          = tokens.affordanceAlpha
-            composerPlaceholder.alpha = tokens.composerAlpha
-        }
+        let gradientStops = (pageGradient?.colors as? [CGColor]) ?? []
+        let middle = gradientStops.dropFirst().first?.components ?? []
+
+        assert(card == surface,     "Destination card surface diverged from Theme.Page.surface")
+        assert(composer == surface, "Composer surface diverged from Theme.Page.surface")
+        assert(middle == surface,   "Gradient middle stop diverged from Theme.Page.surface")
     }
+    #endif
 }

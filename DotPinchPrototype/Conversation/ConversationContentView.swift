@@ -213,6 +213,8 @@ final class ConversationContentView: UIView {
         return CGPoint(x: x, y: PinchTuning.anchorPoint.y)
     }
 
+    // MARK: - DEBUG invariants
+
     #if DEBUG
     private func assertSimilarity(_ t: CGAffineTransform) {
         let eps: CGFloat = 1e-6

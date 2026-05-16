@@ -27,10 +27,14 @@ public enum AnimatorState: Equatable {
 
 public final class SpringAnimator<T: SpringInterpolatable>: AnimatorProviding where T.ValueType == T {
 
+    // MARK: - Events
+
     public enum Event {
         case finished(at: T.ValueType)
         case retargeted(from: T.ValueType, to: T.ValueType)
     }
+
+    // MARK: - Identity & state
 
     public let id = UUID()
 
@@ -63,18 +67,24 @@ public final class SpringAnimator<T: SpringInterpolatable>: AnimatorProviding wh
     /// terminal velocity on .ended; used as the next integration step's initial condition.
     public var velocity: T.VelocityType
 
+    public var mode: AnimationMode = .animated
+
+    var startTime: TimeInterval?
+
+    // MARK: - Callbacks
+
     /// Called once per frame inside the CATransaction.setDisableActions(true) wrapper.
     public var valueChanged: ((T.ValueType) -> Void)?
 
     public var completion: ((Event) -> Void)?
 
-    public var mode: AnimationMode = .animated
-
-    var startTime: TimeInterval?
+    // MARK: - Dependencies (injected)
 
     /// The display-link coordinator that owns the per-frame tick. Held weakly
     /// — the composition root owns the controller; animators never extend its lifetime.
     private weak var controller: AnimationController?
+
+    // MARK: - Init
 
     public init(controller: AnimationController,
                 spring: Spring,
@@ -86,6 +96,8 @@ public final class SpringAnimator<T: SpringInterpolatable>: AnimatorProviding wh
         self.target = target
         self.velocity = T.VelocityType.zero
     }
+
+    // MARK: - Lifecycle
 
     public func start() {
         precondition(value != nil, "Animator requires non-nil `value` before start.")
@@ -112,6 +124,8 @@ public final class SpringAnimator<T: SpringInterpolatable>: AnimatorProviding wh
         velocity = T.VelocityType.zero
         state = .inactive
     }
+
+    // MARK: - Integration
 
     var runningTime: TimeInterval? {
         startTime.map { CACurrentMediaTime() - $0 }

@@ -26,22 +26,6 @@ settings:
     SWIFT_STRICT_CONCURRENCY: minimal
 
 targets:
-  DotPinchPrototypeUITests:
-    type: bundle.ui-testing
-    platform: iOS
-    deploymentTarget: "17.0"
-    sources:
-      - path: DotPinchPrototypeUITests
-    dependencies:
-      - target: DotPinchPrototype
-    settings:
-      base:
-        PRODUCT_BUNDLE_IDENTIFIER: com.matthewharrilal.dotpinchprototype.uitests
-        GENERATE_INFOPLIST_FILE: YES
-        TEST_TARGET_NAME: DotPinchPrototype
-        CODE_SIGNING_REQUIRED: NO
-        CODE_SIGNING_ALLOWED: NO
-
   DotPinchPrototype:
     type: application
     platform: iOS

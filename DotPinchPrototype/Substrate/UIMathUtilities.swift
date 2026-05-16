@@ -78,14 +78,3 @@ public func normalizedVelocity(gestureVelocity: CGFloat, target: CGFloat, curren
 public func clamp<T: Comparable>(_ value: T, _ minValue: T, _ maxValue: T) -> T {
     min(max(value, minValue), maxValue)
 }
-
-/// Linear interpolation.
-public func lerp(_ a: CGFloat, _ b: CGFloat, _ t: CGFloat) -> CGFloat {
-    a + (b - a) * t
-}
-
-/// Ease-out curve (cubic), useful for staggered reveal phases.
-public func easeOut(_ t: CGFloat) -> CGFloat {
-    let x = clamp(t, 0, 1)
-    return 1 - pow(1 - x, 3)
-}

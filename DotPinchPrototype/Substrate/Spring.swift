@@ -74,20 +74,4 @@ public struct Spring: Equatable {
         }
     }
 
-    // MARK: - Presets
-
-    /// The default UI spring used by the prototype's PinchToMemoryInteraction for the
-    /// snap-to-finish phase after gesture release. Tuned to match the trajectory verdict's
-    /// observed today_card damping (~0.85) with a moderate response.
-    public static let defaultUI = Spring(dampingRatio: 0.85, response: 0.4)
-
-    /// A slightly snappier spring used for the gradient/chrome where slight overshoot is
-    /// perceptually fine and "alive" is the goal.
-    public static let chromeOscillate = Spring(dampingRatio: 0.65, response: 0.45)
-
-    /// Non-animated mode placeholder. response = 0 means "snap to target immediately."
-    /// NINETY-pinch-E15: non-animated mode still goes through the animator so cleanup
-    /// runs (cancels in-flight animations, fires completion events, wraps writes in
-    /// CATransaction.setDisableActions).
-    public static let defaultNonAnimated = Spring(dampingRatio: 1.0, response: 0.0)
 }

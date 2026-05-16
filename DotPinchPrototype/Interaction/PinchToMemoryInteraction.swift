@@ -21,14 +21,10 @@ final class PinchToMemoryInteraction: NSObject, UIInteraction {
     func didMove(to view: UIView?) {
         guard let view else { return }
         view.addGestureRecognizer(pinch)
-        if let container = view.superview as? PinchMorphContainerView {
-            self.container = container
-        }
     }
 
     private weak var conversationView: TimelineCompressible?
     private weak var animator: SpringAnimator<PinchMorphState>?
-    private weak var container: PinchMorphContainerView?
 
     private let pinch = UIPinchGestureRecognizer()
     private var anchorScale: CGFloat = 1.0
@@ -82,7 +78,6 @@ final class PinchToMemoryInteraction: NSObject, UIInteraction {
             animator.velocity = .zero
             animator.stop(immediately: true)
         }
-        container?.routesHitTestThroughPresentationLayer = true
     }
 
     private func shouldUseReducedMotion() -> Bool {

@@ -24,21 +24,10 @@ public struct PinchMorphState: SpringInterpolatable, VelocityProviding, Equatabl
              - (PinchTuning.baselineSimilarityS - PinchTuning.destinationSimilarityS) * p
     }
 
-    /// REFUSAL #5: uniform blur fraction (plateau curve). Same value at every
-    /// point on the card surface — sigma is spatially invariant.
-    public var blurFraction: CGFloat {
-        let p = max(0, min(1, progress))
-        let up = PinchTuning.blurPlateauStart
-        let down = PinchTuning.blurPlateauEnd
-        if p <= up { return p / up }
-        if p >= down { return (1 - p) / (1 - down) }
-        return 1.0
-    }
-
-    /// Affordance alpha — materializes only after the content swap point.
+    /// Affordance alpha — materializes past the affordance threshold.
     public var affordanceAlpha: CGFloat {
         let p = max(0, min(1, progress))
-        let start = PinchTuning.contentSwapForward
+        let start = PinchTuning.affordanceMaterializesAt
         guard p > start else { return 0 }
         return min(1, (p - start) / (1 - start))
     }

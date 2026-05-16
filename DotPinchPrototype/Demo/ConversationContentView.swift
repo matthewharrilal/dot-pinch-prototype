@@ -297,27 +297,10 @@ final class ConversationContentView: UIView {
         }
     }
 
-    // MARK: - Public API — CANONICAL pinch-to-memory mechanic
+    // MARK: - Public API
 
-    /// Slot rect in superview coordinates. Set by DemoViewController so the
-    /// transform animation knows where to anchor the shrinking conversation.
-    var slotRect: CGRect = .zero
-
-    /// Drives the canonical pinch-to-memory mechanic per the lens-check:
-    ///   • Soul #1: the conversation surface IS the chip — same view scales in place.
-    ///   • Soul #6: as the surface scales down, MORE content appears via apparent
-    ///     reflow (text rendered smaller per unit area).
-    ///   • Soul #8: slot-anchored — scales toward slot center, not screen center.
-    ///
-    /// Implementation: CGAffineTransform applies scale + translation so the
-    /// conversation appears to shrink toward slotRect. At `progress = 0` the view
-    /// renders at full size in its original position. At `progress = 1` the view
-    /// renders shrunk into slotRect.
-    ///
-    /// Writes wrapped in `CATransaction.setDisableActions(true)` (INV-2).
-    // The chat surface (self) does NOT scale — it holds station (Stage 1 of relay).
-    // Only contentRoot scales via similarity transform. The chat surface's alpha
-    // and the destination card's appearance are driven by DemoVC (the single writer).
+    /// The chat surface (self) holds station — only contentRoot scales via the
+    /// 2D similarity transform. DemoVC drives self.alpha and the destination card.
     func setTimelineCompression(_ progress: CGFloat) {
         CATransaction.begin()
         CATransaction.setDisableActions(true)

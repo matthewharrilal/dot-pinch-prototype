@@ -49,25 +49,10 @@ enum PinchTuning {
     /// Rubber-band damping coefficient. UIScrollView-tuned (Apple's c = 0.55).
     static let rubberBandDampingC: CGFloat = 0.55
 
-    // MARK: - Blur (REFUSAL #5)
+    // MARK: - Affordance materialization
 
-    /// Progress at which blur ramp-up reaches the plateau (full blur).
-    /// REFUSAL #5: blur is a FOCAL effect, not atmospheric. The plateau
-    /// covers the content swap; ramp shapes are uniform across the card.
-    static let blurPlateauStart: CGFloat = 0.4
-
-    /// Progress at which blur ramp-down begins (still at full blur until here).
-    static let blurPlateauEnd: CGFloat = 0.7
-
-    // MARK: - Content swap (transmutation)
-
-    /// Progress at which transcript → summary swap fires (forward direction).
-    /// Hysteresis pair with contentSwapReverse to prevent flicker on
-    /// gesture reversal.
-    static let contentSwapForward: CGFloat = 0.6
-
-    /// Progress at which summary → transcript swap fires (reverse direction).
-    static let contentSwapReverse: CGFloat = 0.4
+    /// Progress past which affordance icons begin fading in.
+    static let affordanceMaterializesAt: CGFloat = 0.6
 
     // MARK: - Spring physics
 
@@ -85,10 +70,6 @@ enum PinchTuning {
     /// Minimum gesture velocity (normalized progress units / second) at which
     /// a settle-velocity injection survives the .ended → settle handoff.
     static let velocityHandoffFloorPerSecond: CGFloat = 0.1
-
-    /// Projection time-horizon (s) for commit/cancel decision at .ended.
-    /// WWDC 2018 Session 803 deceleration model.
-    static let projectionDecelerationSeconds: CGFloat = 0.4
 
     // MARK: - Conversation content
 

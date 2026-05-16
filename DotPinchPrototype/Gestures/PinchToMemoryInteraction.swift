@@ -27,8 +27,13 @@ final class PinchToMemoryInteraction: NSObject, UIInteraction {
 
     private let pinch = UIPinchGestureRecognizer()
     private var anchorScale: CGFloat = 1.0
-    /// Origin state at .began. Determines polarity: 0 → forward, 1 → reverse.
+    /// Origin state at .began. Determines polarity: forward from baseline (0)
+    /// versus reverse from destination (1).
     private var origin: PinchMorphState = .zero
+
+    /// True when the user began the pinch from the baseline (fullscreen chat)
+    /// side of the morph, false when beginning from settled-destination side.
+    private var isFromBaseline: Bool { origin.progress < 0.5 }
 
     // MARK: - Init
 
@@ -109,7 +114,6 @@ final class PinchToMemoryInteraction: NSObject, UIInteraction {
     /// Scalar in, scalar out. Direction-respecting via origin polarity.
     private func gestureProgress(scale: CGFloat) -> CGFloat {
         let s = scale / anchorScale
-        let isFromBaseline = origin.progress < 0.5
         let signed: CGFloat = isFromBaseline
             ? (1 - s) * PinchTuning.pinchSensitivity
             : (s - 1) * PinchTuning.pinchSensitivity
@@ -125,7 +129,6 @@ final class PinchToMemoryInteraction: NSObject, UIInteraction {
 
     private func progressVelocity(for recognizer: UIPinchGestureRecognizer) -> CGFloat {
         let magnitude = abs(recognizer.velocity) * PinchTuning.pinchSensitivity / 2.0
-        let isFromBaseline = origin.progress < 0.5
         if isFromBaseline {
             return recognizer.velocity < 0 ? magnitude : -magnitude
         } else {

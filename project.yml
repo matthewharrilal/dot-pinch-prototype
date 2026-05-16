@@ -26,6 +26,39 @@ settings:
     SWIFT_STRICT_CONCURRENCY: minimal
 
 targets:
+  DotPinchPrototypeTests:
+    type: bundle.unit-test
+    platform: iOS
+    deploymentTarget: "17.0"
+    sources:
+      - path: DotPinchPrototypeTests
+    dependencies:
+      - target: DotPinchPrototype
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.matthewharrilal.dotpinchprototype.tests
+        GENERATE_INFOPLIST_FILE: YES
+        TEST_HOST: "$(BUILT_PRODUCTS_DIR)/DotPinchPrototype.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/DotPinchPrototype"
+        BUNDLE_LOADER: "$(TEST_HOST)"
+        CODE_SIGNING_REQUIRED: NO
+        CODE_SIGNING_ALLOWED: NO
+
+  DotPinchPrototypeUITests:
+    type: bundle.ui-testing
+    platform: iOS
+    deploymentTarget: "17.0"
+    sources:
+      - path: DotPinchPrototypeUITests
+    dependencies:
+      - target: DotPinchPrototype
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.matthewharrilal.dotpinchprototype.uitests
+        GENERATE_INFOPLIST_FILE: YES
+        TEST_TARGET_NAME: DotPinchPrototype
+        CODE_SIGNING_REQUIRED: NO
+        CODE_SIGNING_ALLOWED: NO
+
   DotPinchPrototype:
     type: application
     platform: iOS

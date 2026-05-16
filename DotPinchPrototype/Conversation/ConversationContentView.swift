@@ -198,9 +198,10 @@ final class ConversationContentView: UIView {
         // After this, the past messages exist in the contentView but live offscreen
         // above the viewport at baseline.
         layoutIfNeeded()
-        let pastBubbles = contentView.arrangedSubviews.prefix(PinchTuning.pastMessageCount)
+        let pastCount = ChatTranscript.past.count
+        let pastBubbles = contentView.arrangedSubviews.prefix(pastCount)
         let currentBubble = contentView.arrangedSubviews.last
-        if pastBubbles.count == PinchTuning.pastMessageCount, !didCaptureBaseline {
+        if pastBubbles.count == pastCount, !didCaptureBaseline {
             var heightAbove: CGFloat = 0
             for bubble in pastBubbles {
                 heightAbove += bubble.bounds.height + contentView.spacing
@@ -225,59 +226,35 @@ final class ConversationContentView: UIView {
 
     // MARK: - Public API
 
-    /// The chat surface (self) holds station — only contentRoot scales via the
-    /// 2D similarity transform. DemoVC drives self.alpha and the destination card.
-    func setTimelineCompression(_ progress: CGFloat) {
+    /// Apply the morph's render-token bundle. Pure projection — no curve math
+    /// happens here; tokens carry the already-derived values.
+    func apply(_ tokens: ConversationMorphTokens) {
         CATransaction.begin()
         CATransaction.setDisableActions(true)
         defer { CATransaction.commit() }
 
-        let p = max(0, min(1, progress))
-        let s = PinchTuning.baselineSimilarityS
-              - (PinchTuning.baselineSimilarityS - PinchTuning.destinationSimilarityS) * p
-
+        // Geometry — only contentRoot scales; chat surface (self) holds station.
+        let s = tokens.similarityScale
         let isRTL = effectiveUserInterfaceLayoutDirection == .rightToLeft
         let anchorX = isRTL ? (1 - PinchTuning.anchorPoint.x) : PinchTuning.anchorPoint.x
         let anchorY = PinchTuning.anchorPoint.y
         let tx = (anchorX - 0.5) * bounds.width  * (1 - s)
         let ty = (anchorY - 0.5) * bounds.height * (1 - s)
-
-        // Transform on contentRoot, not self — the chat surface holds station.
         contentRoot.transform = CGAffineTransform(translationX: tx, y: ty).scaledBy(x: s, y: s)
 
-        let blurFraction = blurFractionForProgress(p)
-        blurOverlay.alpha = blurFraction
-        blurAnimator?.fractionComplete = blurFraction
+        // Blur
+        blurOverlay.alpha = tokens.blurFraction
+        blurAnimator?.fractionComplete = tokens.blurFraction
 
-        // Staggered bottom-up dissolve: bottom alpha fades early (revealing the
-        // page's warm-pink), top alpha fades later (revealing cool-grey). The
-        // overlap leaves a brief banded transition under blur.
-        let phase = clamp(
-            (p - PinchTuning.chatDissolveStart)
-            / (PinchTuning.chatDissolveEnd - PinchTuning.chatDissolveStart),
-            0, 1
-        )
-        let bottomFade = clamp(phase / PinchTuning.dissolveBottomFadeFraction, 0, 1)
-        let topFade    = clamp((phase - PinchTuning.dissolveTopFadeOffset) / PinchTuning.dissolveBottomFadeFraction, 0, 1)
+        // Staggered chat dissolve (top + bottom of the mask).
         chatMask.colors = [
-            UIColor.black.withAlphaComponent(1 - topFade).cgColor,
-            UIColor.black.withAlphaComponent(1 - bottomFade).cgColor
+            UIColor.black.withAlphaComponent(tokens.chatTopAlpha).cgColor,
+            UIColor.black.withAlphaComponent(tokens.chatBottomAlpha).cgColor
         ]
 
         #if DEBUG
         assertSimilarity(contentRoot.transform)
         #endif
-    }
-
-    // Blur is silent below illegibilityRampStart, ramps to peak by
-    // illegibilityRampComplete, then holds at peak. The chat's bottom-up
-    // dissolve hides the surface before the destination card resolves.
-    private func blurFractionForProgress(_ p: CGFloat) -> CGFloat {
-        let start = PinchTuning.illegibilityRampStart
-        let complete = PinchTuning.illegibilityRampComplete
-        if p < start { return 0 }
-        if p < complete { return (p - start) / (complete - start) }
-        return 1
     }
 
     #if DEBUG
@@ -288,5 +265,3 @@ final class ConversationContentView: UIView {
     }
     #endif
 }
-
-extension ConversationContentView: TimelineCompressible {}

@@ -245,7 +245,7 @@ final class ConversationViewController: UIViewController {
         animator.value = baseline
         animator.target = baseline
         handleAnimatorStateChange(baseline)
-        let inter = PinchToMemoryInteraction(conversationView: conversationView, animator: animator)
+        let inter = PinchToMemoryInteraction(animator: animator)
         conversationView.addInteraction(inter)
         self.pinchInteraction = inter
 
@@ -288,7 +288,7 @@ final class ConversationViewController: UIViewController {
             if case .finished(let final) = event {
                 CATransaction.begin()
                 CATransaction.setDisableActions(true)
-                if final.progress >= 0.999 {
+                if final.progress >= MorphTiming.completionEpsilon {
                     self.destinationCard.layer.shadowColor = UIColor.black.cgColor
                     self.destinationCard.layer.shadowOffset = Theme.Shadow.cardFinalOffset
                     self.destinationCard.layer.shadowRadius = Theme.Shadow.cardFinalRadius
@@ -307,26 +307,21 @@ final class ConversationViewController: UIViewController {
     }
 
     private func handleAnimatorStateChange(_ state: PinchMorphState) {
+        let tokens = ConversationMorphTokens(state: state)
         CATransaction.begin()
         CATransaction.setDisableActions(true)
         defer { CATransaction.commit() }
-        let p = state.progress
-        statusLabel.text = "p: \(String(format: "%.3f", p))"
-        conversationView.setTimelineCompression(p)
 
-        // The chat surface's own dissolve (staggered top/bottom mask) is driven
-        // inside ConversationContentView. Do NOT also fade conversationView.alpha
-        // here — that would double-fade and erase the staggered reveal.
-        //
-        // Card silhouette emerges first, then label fades in once silhouette has
-        // resolved (eye stops looking for glyphs, starts reading the name).
-        destinationCard.alpha = ramp(p, from: PinchTuning.cardEmergeStart, to: PinchTuning.cardEmergeEnd)
-        let labelAlpha = ramp(p, from: PinchTuning.labelEmergeStart, to: PinchTuning.labelEmergeEnd)
-        destinationDate.alpha = labelAlpha
-        destinationBody.alpha = labelAlpha
+        statusLabel.text = "p: \(String(format: "%.3f", state.progress))"
 
-        pinchGlyph.alpha = state.affordanceAlpha
-        menuButton.alpha = state.affordanceAlpha
-        composerPlaceholder.alpha = 1 - state.progress
+        // Single token bundle drives both surfaces — chat content + chrome.
+        conversationView.apply(tokens)
+
+        destinationCard.alpha = tokens.destinationCardAlpha
+        destinationDate.alpha = tokens.destinationLabelAlpha
+        destinationBody.alpha = tokens.destinationLabelAlpha
+        pinchGlyph.alpha          = tokens.affordanceAlpha
+        menuButton.alpha          = tokens.affordanceAlpha
+        composerPlaceholder.alpha = tokens.composerAlpha
     }
 }

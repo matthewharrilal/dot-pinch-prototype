@@ -1,5 +1,7 @@
-// One scalar drives the morph. Derived visual properties are pure functions of it.
-// Scalar-only state structurally forbids axis decoupling (Refusal #1).
+// The gesture's integrated state — just a scalar. Spring-interpolable so it can
+// flow through SpringAnimator<PinchMorphState>. Derived visual tokens are not
+// computed here; see Conversation/ConversationMorphTokens.swift for the
+// pure-function projection that drives the view layer.
 
 import Foundation
 import CoreGraphics
@@ -14,21 +16,6 @@ public struct PinchMorphState: SpringInterpolatable, VelocityProviding, Equatabl
 
     public init(progress: CGFloat = 0) { self.progress = progress }
     public static var zero: PinchMorphState { PinchMorphState(progress: 0) }
-
-    /// One scalar applied to both axes — the uniform similarity scale.
-    public var similarityScale: CGFloat {
-        let p = max(0, min(1, progress))
-        return PinchTuning.baselineSimilarityS
-             - (PinchTuning.baselineSimilarityS - PinchTuning.destinationSimilarityS) * p
-    }
-
-    /// Affordance alpha — materializes past the affordance threshold.
-    public var affordanceAlpha: CGFloat {
-        let p = max(0, min(1, progress))
-        let start = PinchTuning.affordanceMaterializesAt
-        guard p > start else { return 0 }
-        return min(1, (p - start) / (1 - start))
-    }
 
     public static func updateValue(
         spring: Spring,

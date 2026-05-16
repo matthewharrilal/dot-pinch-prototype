@@ -23,7 +23,6 @@ final class PinchToMemoryInteraction: NSObject, UIInteraction {
         view.addGestureRecognizer(pinch)
     }
 
-    private weak var conversationView: TimelineCompressible?
     private weak var animator: SpringAnimator<PinchMorphState>?
 
     private let pinch = UIPinchGestureRecognizer()
@@ -33,11 +32,7 @@ final class PinchToMemoryInteraction: NSObject, UIInteraction {
 
     // MARK: - Init
 
-    init(
-        conversationView: TimelineCompressible,
-        animator: SpringAnimator<PinchMorphState>
-    ) {
-        self.conversationView = conversationView
+    init(animator: SpringAnimator<PinchMorphState>) {
         self.animator = animator
         super.init()
         pinch.addTarget(self, action: #selector(handlePinch(_:)))

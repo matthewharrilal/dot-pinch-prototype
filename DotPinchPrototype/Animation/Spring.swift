@@ -45,15 +45,19 @@ public struct Spring: Equatable {
         let omegaN = sqrt(stiffness / mass)
         let zeta = dampingRatio
 
-        let settlingPercentage: CGFloat = 0.0001
-
         if zeta < 1.0 {
-            let t = -log(settlingPercentage) / (zeta * omegaN)
+            let t = -log(Self.settlingPercentage) / (zeta * omegaN)
             return TimeInterval(t)
         } else {
             // Critically/overdamped multiplier matches Wave's empirically-tuned value.
-            let criticallyDampedSettlingTime = -log(settlingPercentage) / omegaN
-            return TimeInterval(criticallyDampedSettlingTime * 1.25)
+            let criticallyDampedSettlingTime = -log(Self.settlingPercentage) / omegaN
+            return TimeInterval(criticallyDampedSettlingTime * Self.overdampedMultiplier)
         }
     }
+
+    /// Energy envelope at which the system is considered settled.
+    private static let settlingPercentage: CGFloat = 0.0001
+
+    /// Wave-derived multiplier applied to critically/overdamped settling time.
+    private static let overdampedMultiplier: CGFloat = 1.25
 }

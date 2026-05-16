@@ -259,8 +259,10 @@ final class ConversationViewController: UIViewController {
         let surface = Theme.Page.surface.cgColor.components ?? []
         let card = (destinationCard.backgroundColor ?? .clear).cgColor.components ?? []
         let composer = (composerPlaceholder.backgroundColor ?? .clear).cgColor.components ?? []
-        let middle = ((pageGradient?.colors as? [CGColor]) ?? [])
-            .indices.contains(1) == true ? ((pageGradient!.colors as! [CGColor])[1].components ?? []) : []
+
+        let gradientStops = (pageGradient?.colors as? [CGColor]) ?? []
+        let middle = gradientStops.dropFirst().first?.components ?? []
+
         assert(card == surface,     "Destination card surface diverged from Theme.Page.surface")
         assert(composer == surface, "Composer surface diverged from Theme.Page.surface")
         assert(middle == surface,   "Gradient middle stop diverged from Theme.Page.surface")

@@ -36,7 +36,7 @@ public final class SpringAnimator<T: SpringInterpolatable>: AnimatorProviding wh
 
     public private(set) var state: AnimatorState = .inactive {
         didSet {
-            if case (.inactive, .running) = (oldValue, state) {
+            if oldValue == .inactive, state == .running {
                 startTime = CACurrentMediaTime()
             }
         }

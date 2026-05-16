@@ -14,8 +14,8 @@ public struct PinchMorphState: SpringInterpolatable, VelocityProviding, Equatabl
     /// 0 = baseline (fullscreen). 1 = settled (destination).
     public var progress: CGFloat
 
-    public init(progress: CGFloat = 0) { self.progress = progress }
-    public static var zero: PinchMorphState { PinchMorphState(progress: 0) }
+    public init(progress: CGFloat) { self.progress = progress }
+    public static let zero = PinchMorphState(progress: 0)
 
     public static func updateValue(
         spring: Spring,

@@ -40,7 +40,7 @@ final class ConversationContentView: UIView {
         setUp()
     }
 
-    required init?(coder: NSCoder) { fatalError() }
+    required init?(coder: NSCoder) { fatalError("init(coder:) is not supported") }
 
     private func setUp() {
         chatGradient.colors = [Theme.Chat.topTint.cgColor, Theme.Chat.bottomTint.cgColor]

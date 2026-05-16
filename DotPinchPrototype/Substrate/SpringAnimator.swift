@@ -36,6 +36,14 @@
 //                       integrator; the AnimationController holds a reference; the gesture
 //                       handler retargets it; physics ticks once per display frame.
 //
+//   • NINETY-pinch-phase-EP7/EP8  Phase handoff (Wave 3 addition). When the higher layer
+//                       (PhaseController) decides Phase 1 → Phase 2, it calls
+//                       `handOffToPhase(target:velocity:)` for an atomic swap of both
+//                       target and velocity in a single tick. The substrate itself remains
+//                       phase-agnostic: it ferries opaque AnyHashable identifiers across
+//                       the .phaseHandoff event without ever inspecting their semantics
+//                       (CQ-7 SRP: phase orchestration lives in PhaseController, not here).
+//
 
 import Foundation
 import QuartzCore
@@ -56,6 +64,20 @@ public enum AnimatorState: Equatable {
 
 public final class SpringAnimator<T: SpringInterpolatable>: AnimatorProviding where T.ValueType == T {
 
+    /// Completion events the animator emits to its `completion` listener.
+    ///
+    /// `.phaseHandoff` is the EP7/EP8 substrate signal: the higher-layer PhaseController
+    /// performed an atomic target+velocity swap via `handOffToPhase`. It is distinct from
+    /// `.retargeted` because a retarget preserves the same axis-space (same active fields,
+    /// same VelocityType meaning) while a phase handoff may change which axes are active.
+    /// The `from`/`to` payload is opaque (AnyHashable) — the substrate doesn't decode it.
+    /// The receiver (PhaseController / DemoViewController) interprets it as a phase id.
+    ///
+    /// Type-dependency note (IMPL-SPEC §1.2): the canonical typed shape will become
+    /// `.phaseHandoff(from: PinchMorphState.Phase, to: PinchMorphState.Phase)` once W3.2
+    /// (Sub-wave B) lands the Phase enum. Until then this is `AnyHashable` so the
+    /// substrate can fire the event without taking a State-layer type dependency
+    /// (CQ-4 layer rule: Substrate → State imports are forbidden).
     public enum Event {
         case finished(at: T.ValueType)
         case retargeted(from: T.ValueType, to: T.ValueType)
@@ -78,6 +100,12 @@ public final class SpringAnimator<T: SpringInterpolatable>: AnimatorProviding wh
 
     /// The target value of the animation. Mutating this in-flight RETARGETS the animation
     /// (per E01) — velocity is preserved; only `startTime` resets and `.retargeted` fires.
+    ///
+    /// Short-circuits when `isHandingOff == true`: `handOffToPhase` writes through this
+    /// setter for storage but suppresses the retargeting bookkeeping so the swap remains
+    /// atomic with the simultaneous velocity write (INV-7 — only velocity crosses the
+    /// phase boundary, but velocity must be written AFTER target without an intervening
+    /// frame seeing a phase-mismatched target+velocity pair).
     public var target: T.ValueType? {
         didSet {
             guard let oldValue, let newValue = target, oldValue != newValue else { return }
@@ -118,6 +146,13 @@ public final class SpringAnimator<T: SpringInterpolatable>: AnimatorProviding wh
     public func start() {
         precondition(value != nil, "Animator requires non-nil `value` before start.")
         precondition(target != nil, "Animator requires non-nil `target` before start.")
+        // CRITICAL FIX: target.didSet only sets startTime when state==.running.
+        // On first start, state is .inactive when target was set, so startTime
+        // stays nil. updateAnimation guards on runningTime (derived from
+        // startTime) and early-returns — spring never integrates, value stays
+        // stuck at its initial state. Set startTime explicitly here so the
+        // first integration step has a valid time origin.
+        startTime = CACurrentMediaTime()
         AnimationController.shared.runPropertyAnimation(self)
     }
 
@@ -189,6 +224,8 @@ public final class SpringAnimator<T: SpringInterpolatable>: AnimatorProviding wh
         }
     }
 }
+
+// MARK: - Animation mode
 
 public enum AnimationMode {
     case animated

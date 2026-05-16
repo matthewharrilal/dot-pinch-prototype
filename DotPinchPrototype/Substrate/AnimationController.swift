@@ -40,6 +40,8 @@ final class AnimationController {
 
     private lazy var displayLink: CADisplayLink = {
         let link = CADisplayLink(target: self, selector: #selector(displayLinkFired(_:)))
+        // ProMotion 120Hz on iPhone 16. Default would be 60Hz.
+        link.preferredFrameRateRange = CAFrameRateRange(minimum: 80, maximum: 120, preferred: 120)
         link.add(to: .main, forMode: .common)
         link.isPaused = true
         return link

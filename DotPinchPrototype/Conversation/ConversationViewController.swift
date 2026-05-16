@@ -1,7 +1,7 @@
-// Composition root for the Conversation feature. Chrome views are siblings of
-// the chat surface, never children (Refusal #3 + #7). The subview hierarchy is
-// built once in viewDidLoad and never reordered (Refusal #8). animator.valueChanged
-// is the single writer of progress-derived view state.
+// The Conversation feature's view controller. Wired up by ConversationComposer
+// — receives its animator and pinch interaction via init. Chrome views are
+// siblings of the chat surface, never children (Refusal #3 + #7). The subview
+// hierarchy is built once in viewDidLoad and never reordered (Refusal #8).
 
 import UIKit
 
@@ -23,29 +23,28 @@ final class ConversationViewController: UIViewController {
     private let destinationDate = UILabel()
     private let destinationBody = UILabel()
 
-    // MARK: - Interaction substrate
+    // MARK: - Injected dependencies
 
-    private lazy var animator: SpringAnimator<PinchMorphState> = {
-        let baseline = PinchMorphState(progress: 0)
-        let a = SpringAnimator<PinchMorphState>(
-            spring: Spring(
-                dampingRatio: PinchTuning.springDamping,
-                response: PinchTuning.springResponse
-            ),
-            value: baseline,
-            target: baseline
-        )
-        return a
-    }()
-
-    private var pinchInteraction: PinchToMemoryInteraction?
+    private let animator: SpringAnimator<PinchMorphState>
+    private let pinchInteraction: PinchToMemoryInteraction
+    private var didInstallInteraction = false
 
     // MARK: - Geometry
 
     private var fullscreenRect: CGRect = .zero
 
-    // MARK: - Lifecycle
+    // MARK: - Init
 
+    init(animator: SpringAnimator<PinchMorphState>,
+         pinchInteraction: PinchToMemoryInteraction) {
+        self.animator = animator
+        self.pinchInteraction = pinchInteraction
+        super.init(nibName: nil, bundle: nil)
+    }
+
+    required init?(coder: NSCoder) { fatalError("init(coder:) is not supported") }
+
+    // MARK: - Lifecycle
 
     override func viewDidLoad() {
         super.viewDidLoad()
@@ -237,7 +236,7 @@ final class ConversationViewController: UIViewController {
     // MARK: - Interaction install
 
     private func installInteractionIfNeeded() {
-        guard pinchInteraction == nil, fullscreenRect != .zero else { return }
+        guard !didInstallInteraction, fullscreenRect != .zero else { return }
         #if DEBUG
         assertSurfaceTokenContinuity()
         #endif
@@ -245,9 +244,8 @@ final class ConversationViewController: UIViewController {
         animator.value = baseline
         animator.target = baseline
         handleAnimatorStateChange(baseline)
-        let inter = PinchToMemoryInteraction(animator: animator)
-        conversationView.addInteraction(inter)
-        self.pinchInteraction = inter
+        conversationView.addInteraction(pinchInteraction)
+        didInstallInteraction = true
 
         // Tap-to-expand at destination.
         let tap = UITapGestureRecognizer(target: self, action: #selector(handleTapToExpand))

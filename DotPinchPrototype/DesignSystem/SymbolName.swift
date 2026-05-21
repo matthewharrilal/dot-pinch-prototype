@@ -1,10 +1,7 @@
-// SF Symbol name registry. View code calls UIImage(systemName:) through these
-// constants so symbol-name typos surface at one place and renames stay atomic.
+// SF Symbol name registry. UIImage(systemName:) calls funnel through these
+// constants so symbol-name typos surface at one place.
 
 enum SymbolName {
-    /// Pinch affordance glyph (top-leading) — "two arrows converging".
-    static let pinchAffordance = "arrow.down.right.and.arrow.up.left"
-
-    /// Overflow menu glyph (top-trailing).
-    static let menu = "ellipsis"
+    /// Pinch-EXPAND affordance glyph — outward-diverging arrows.
+    static let pinchExpandAffordance = "arrow.up.left.and.arrow.down.right"
 }

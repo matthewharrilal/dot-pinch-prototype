@@ -1,12 +1,7 @@
 // Generic stateful spring integrator. Wave-style — adapted from jtrivedi/Wave.
-//
-// Key invariants:
-//   • Velocity is preserved across target changes (mid-flight retarget bends the
-//     trajectory rather than snapping). The target.didSet only resets startTime
-//     and emits .retargeted; it never touches velocity.
-//   • The animator knows nothing about UIView/CALayer — valueChanged is the seam.
-//   • Settling completes via the spring's closed-form settlingDuration, not a
-//     position threshold.
+// Velocity is preserved across target changes (mid-flight retarget bends the
+// trajectory); valueChanged is the seam to UIKit/CALayer. Settling completes
+// via the spring's closed-form settlingDuration, not a position threshold.
 
 import Foundation
 import QuartzCore
@@ -48,11 +43,10 @@ public final class SpringAnimator<T: SpringInterpolatable>: AnimatorProviding wh
 
     public var spring: Spring
 
-    /// The current value of the animation. Mutates per frame via spring integration.
     public var value: T.ValueType?
 
-    /// The target value. Mutating in-flight RETARGETS — velocity is preserved,
-    /// startTime resets, and `.retargeted` fires.
+    /// Mutating in-flight RETARGETS — velocity is preserved, startTime resets,
+    /// and `.retargeted` fires.
     public var target: T.ValueType? {
         didSet {
             guard let oldValue, let newValue = target, oldValue != newValue else { return }
@@ -63,26 +57,24 @@ public final class SpringAnimator<T: SpringInterpolatable>: AnimatorProviding wh
         }
     }
 
-    /// The current velocity. Publicly settable so a gesture handler can inject
-    /// terminal velocity on .ended; used as the next integration step's initial condition.
+    /// Publicly settable so a gesture handler can inject terminal velocity on .ended.
     public var velocity: T.VelocityType
-
-    public var mode: AnimationMode = .animated
 
     var startTime: TimeInterval?
 
     // MARK: - Callbacks
 
-    /// Called once per frame inside the CATransaction.setDisableActions(true) wrapper.
     public var valueChanged: ((T.ValueType) -> Void)?
 
     public var completion: ((Event) -> Void)?
 
     // MARK: - Dependencies (injected)
 
-    /// The display-link coordinator that owns the per-frame tick. Held weakly
-    /// — the composition root owns the controller; animators never extend its lifetime.
     private weak var controller: AnimationController?
+
+    /// Identity accessor for the canary test that asserts camera + extension
+    /// animators share the same AnimationController instance.
+    internal var animationControllerIdentity: AnyObject? { controller }
 
     // MARK: - Init
 
@@ -102,8 +94,8 @@ public final class SpringAnimator<T: SpringInterpolatable>: AnimatorProviding wh
     public func start() {
         precondition(value != nil, "Animator requires non-nil `value` before start.")
         precondition(target != nil, "Animator requires non-nil `target` before start.")
-        // target.didSet only sets startTime when state==.running. On first start
-        // state is .inactive, so set startTime here or the spring never integrates.
+        // target.didSet only sets startTime when state==.running; on first start
+        // state is .inactive, so set it here or the spring never integrates.
         startTime = CACurrentMediaTime()
         controller?.runPropertyAnimation(self)
     }
@@ -131,9 +123,9 @@ public final class SpringAnimator<T: SpringInterpolatable>: AnimatorProviding wh
         startTime.map { CACurrentMediaTime() - $0 }
     }
 
-    /// One step of integration, called by AnimationController per display refresh.
-    /// CATransaction.setDisableActions(true) is opened in AnimationController, so
-    /// implicit animations are already suppressed by the time this runs.
+    /// One step of integration. Final-tick ordering contract (load-bearing):
+    /// value → valueChanged → completion → state=.ended. `tryClearActiveCellAtRest`
+    /// depends on completion firing while state is still .running.
     func updateAnimation(dt: TimeInterval) {
         guard let value, let target else {
             state = .inactive
@@ -144,27 +136,18 @@ public final class SpringAnimator<T: SpringInterpolatable>: AnimatorProviding wh
 
         guard let runningTime else { return }
 
-        let isAnimated = spring.response > 0 && mode == .animated
-
-        let (newValue, newVelocity): (T.ValueType, T.VelocityType)
-        if isAnimated {
-            (newValue, newVelocity) = T.updateValue(
-                spring: spring,
-                value: value,
-                target: target,
-                velocity: velocity,
-                dt: dt
-            )
-        } else {
-            // Non-animated mode still flows through the animator so cleanup runs.
-            newValue = target
-            newVelocity = T.VelocityType.zero
-        }
+        let (newValue, newVelocity) = T.updateValue(
+            spring: spring,
+            value: value,
+            target: target,
+            velocity: velocity,
+            dt: dt
+        )
 
         self.value = newValue
         self.velocity = newVelocity
 
-        let finished = (runningTime >= spring.settlingDuration) || !isAnimated
+        let finished = runningTime >= spring.settlingDuration
         if finished {
             self.value = target
         }
@@ -176,11 +159,4 @@ public final class SpringAnimator<T: SpringInterpolatable>: AnimatorProviding wh
             state = .ended
         }
     }
-}
-
-// MARK: - Animation mode
-
-public enum AnimationMode {
-    case animated
-    case nonAnimated
 }

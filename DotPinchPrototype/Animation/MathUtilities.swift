@@ -1,5 +1,4 @@
-// Math primitives bottled from Wave's UIMathUtilities and WWDC 2018 Session 803:
-// rubber-band damping, projection, velocity normalization, clamping.
+// Math primitives: rubber-band damping, projection, clamping, smoothstep.
 
 import Foundation
 import CoreGraphics
@@ -11,8 +10,6 @@ public func rubberband(
     interval: CGFloat,
     c: CGFloat = 0.55
 ) -> CGFloat {
-    // Per Wave's implementation: the formula maps an out-of-range value to a damped
-    // version with exponentially-decreasing slope at the edge.
     if range.contains(value) {
         return value
     }
@@ -29,27 +26,10 @@ private func rubberbandClamp(offset: CGFloat, interval: CGFloat, c: CGFloat) -> 
     (1.0 - (1.0 / (offset * c / interval + 1.0))) * interval
 }
 
-/// Project where a value will rest given an initial velocity and exponential decay.
-///
 /// Closed-form integral of v(t) = v0 · decelerationRate^t. With decelerationRate = 0.998
 /// (UIScrollView default), returns total travel distance from a given initial velocity.
 public func project(initialVelocity: CGFloat, decelerationRate: CGFloat = 0.998) -> CGFloat {
     (initialVelocity / 1000.0) * decelerationRate / (1.0 - decelerationRate)
-}
-
-/// WWDC 2018 Session 803 velocity-normalization formula.
-///
-/// Given the gesture's terminal velocity (in property units per second) and the remaining
-/// distance to the animation target, returns the dimensionless ratio that goes into
-/// `UISpringTimingParameters.initialVelocity` or directly into `SpringAnimator.velocity`.
-///
-/// Example: if `gestureVelocity = 600` pts/sec and `target - current = 200` pts,
-/// the normalized velocity is 3.0 — meaning the spring starts moving 3× its natural
-/// per-second response rate.
-public func normalizedVelocity(gestureVelocity: CGFloat, target: CGFloat, current: CGFloat) -> CGFloat {
-    let distance = target - current
-    guard abs(distance) > 0.0001 else { return 0 }
-    return gestureVelocity / distance
 }
 
 /// Clamp a value to a closed range, no rubber-banding.
@@ -57,9 +37,12 @@ public func clamp<T: Comparable>(_ value: T, _ minValue: T, _ maxValue: T) -> T 
     min(max(value, minValue), maxValue)
 }
 
-/// Linear ramp from 0 → 1 over [start, end]; clamped to [0, 1] outside the range.
-public func ramp(_ value: CGFloat, from start: CGFloat, to end: CGFloat) -> CGFloat {
-    guard value > start else { return 0 }
-    guard value < end else { return 1 }
-    return (value - start) / (end - start)
+/// GLSL-style smoothstep — Hermite-interpolated S-curve from 0 → 1 over
+/// `[edge0, edge1]`, clamped to [0, 1] outside the range. Continuous in
+/// both value and first derivative at the edges.
+public func smoothstep(_ edge0: CGFloat, _ edge1: CGFloat, _ x: CGFloat) -> CGFloat {
+    let denom = edge1 - edge0
+    guard abs(denom) > 1e-12 else { return x < edge0 ? 0 : 1 }
+    let t = clamp((x - edge0) / denom, 0, 1)
+    return t * t * (3 - 2 * t)
 }

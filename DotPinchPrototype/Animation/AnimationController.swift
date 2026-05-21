@@ -1,35 +1,52 @@
-// Coordinates all animators via a single shared CADisplayLink.
-//
-// One display link per app — animators share dt per frame so multi-property
-// animations stay in lockstep. Each frame opens a CATransaction with
-// setDisableActions(true), suppressing UIKit's implicit 0.25s animations
-// underneath any view writes the per-frame valueChanged closures perform.
-// On registration the animator ticks once synchronously at dt=0 so the view
-// paints at its starting value on the same vsync as the start() call.
-//
-// Not a singleton. The composition root creates one instance and injects it
-// into every SpringAnimator that needs to run.
+// Coordinates all animators via a single shared CADisplayLink. One link per
+// app — animators share dt per frame so multi-property animations stay in
+// lockstep. Each frame opens a CATransaction(setDisableActions: true) to
+// suppress UIKit's implicit animations under the per-frame view writes.
 
 import Foundation
 import QuartzCore
 import UIKit
 
+/// Weak-proxy target for the CADisplayLink. Breaks the runloop → displayLink
+/// → target retain cycle so `AnimationController.deinit` actually fires.
+private final class DisplayLinkProxy {
+    weak var controller: AnimationController?
+
+    init(controller: AnimationController) {
+        self.controller = controller
+    }
+
+    @objc func displayLinkFired(_ link: CADisplayLink) {
+        controller?._displayLinkFired(link)
+    }
+}
+
 public final class AnimationController {
 
     private var animations: [UUID: AnimatorProviding] = [:]
 
-    private lazy var displayLink: CADisplayLink = {
-        let link = CADisplayLink(target: self, selector: #selector(displayLinkFired(_:)))
+    private var displayLink: CADisplayLink?
+    private var proxy: DisplayLinkProxy?
+
+    public init() {
+        let proxy = DisplayLinkProxy(controller: self)
+        let link = CADisplayLink(target: proxy, selector: #selector(DisplayLinkProxy.displayLinkFired(_:)))
         // ProMotion 120Hz on iPhone 16. Default would be 60Hz.
         link.preferredFrameRateRange = CAFrameRateRange(minimum: 80, maximum: 120, preferred: 120)
         link.add(to: .main, forMode: .common)
         link.isPaused = true
-        return link
-    }()
+        self.proxy = proxy
+        self.displayLink = link
+    }
 
-    public init() {}
+    deinit {
+        displayLink?.invalidate()
+        displayLink = nil
+        proxy = nil
+        animations.removeAll()
+    }
 
-    @objc private func displayLinkFired(_ link: CADisplayLink) {
+    fileprivate func _displayLinkFired(_ link: CADisplayLink) {
         let dt = link.targetTimestamp - link.timestamp
 
         CATransaction.withSuppressedActions {
@@ -44,7 +61,7 @@ public final class AnimationController {
         }
 
         if animations.isEmpty {
-            displayLink.isPaused = true
+            displayLink?.isPaused = true
         }
     }
 
@@ -55,7 +72,7 @@ public final class AnimationController {
         animations[animator.id] = animator
 
         if wasEmpty {
-            displayLink.isPaused = false
+            displayLink?.isPaused = false
         }
 
         // Tick once synchronously at dt=0 so the view paints at its starting

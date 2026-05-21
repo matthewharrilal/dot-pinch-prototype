@@ -33,6 +33,9 @@ targets:
     sources:
       - path: DotPinchPrototype
         type: group
+        excludes:
+          - "**/README.md"
+          - "**/.gitkeep"
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.matthewharrilal.dotpinchprototype
@@ -49,3 +52,26 @@ targets:
         INFOPLIST_KEY_UILaunchScreen_Generation: YES
         INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad: "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight"
         INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone: "UIInterfaceOrientationPortrait"
+
+  DotPinchPrototypeTests:
+    type: bundle.unit-test
+    platform: iOS
+    deploymentTarget: "17.0"
+    sources:
+      - path: Tests
+        type: group
+        excludes:
+          - "**/README.md"
+          - "**/.gitkeep"
+    dependencies:
+      - target: DotPinchPrototype
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.matthewharrilal.dotpinchprototype.tests
+        PRODUCT_NAME: DotPinchPrototypeTests
+        CODE_SIGN_STYLE: Automatic
+        CODE_SIGNING_REQUIRED: NO
+        CODE_SIGNING_ALLOWED: NO
+        GENERATE_INFOPLIST_FILE: YES
+        SWIFT_VERSION: "5.9"
+        IPHONEOS_DEPLOYMENT_TARGET: "17.0"

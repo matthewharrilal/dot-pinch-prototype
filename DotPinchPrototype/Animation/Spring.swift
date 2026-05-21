@@ -5,13 +5,10 @@ import CoreGraphics
 
 public struct Spring: Equatable {
 
-    /// Damping ratio: 1.0 = critically damped (no overshoot), <1.0 = underdamped
-    /// (overshoot + ring), >1.0 = overdamped (slow asymptotic settle). Apple's
-    /// stock UI springs cluster around 0.7–0.85.
+    /// Damping ratio: 1.0 = critically damped, <1.0 = underdamped, >1.0 = overdamped.
     public var dampingRatio: CGFloat
 
-    /// Frequency response — roughly the time (in seconds) the spring takes to
-    /// settle from a unit displacement with no velocity. Smaller = snappier.
+    /// Frequency response — settle time (sec) from a unit displacement at rest.
     public var response: CGFloat
 
     /// Mass. Kept at 1.0; tune feel via dampingRatio + response.
@@ -31,15 +28,13 @@ public struct Spring: Equatable {
         return mass * omegaN * omegaN
     }
 
-    /// Damping coefficient c = 2ζ·sqrt(k·m) where ζ is the damping ratio,
-    /// k is stiffness, m is mass.
+    /// Damping coefficient c = 2ζ·sqrt(k·m).
     public var dampingCoefficient: CGFloat {
         2 * dampingRatio * sqrt(stiffness * mass)
     }
 
-    /// Closed-form settling time. For underdamped springs the envelope decays
-    /// as exp(-ζ·ωn·t); solve for t where envelope < settlingPercentage.
-    /// Completion is the system's energy reaching zero, not a position threshold.
+    /// Closed-form settling time. Underdamped envelope decays as exp(-ζ·ωn·t);
+    /// solve for t where envelope < settlingPercentage.
     public var settlingDuration: TimeInterval {
         guard response > 0 else { return 0 }
         let omegaN = sqrt(stiffness / mass)
@@ -49,15 +44,11 @@ public struct Spring: Equatable {
             let t = -log(Self.settlingPercentage) / (zeta * omegaN)
             return TimeInterval(t)
         } else {
-            // Critically/overdamped multiplier matches Wave's empirically-tuned value.
             let criticallyDampedSettlingTime = -log(Self.settlingPercentage) / omegaN
             return TimeInterval(criticallyDampedSettlingTime * Self.overdampedMultiplier)
         }
     }
 
-    /// Energy envelope at which the system is considered settled.
     private static let settlingPercentage: CGFloat = 0.0001
-
-    /// Wave-derived multiplier applied to critically/overdamped settling time.
     private static let overdampedMultiplier: CGFloat = 1.25
 }

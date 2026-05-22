@@ -8,8 +8,23 @@ final class ChatViewController: UIViewController {
     private let bubbleStack = UIStackView()
     private let composerContainer = UIView()
     private let composerTextField = UITextField()
+    private let expandButton = UIButton(type: .system)
+    private var pinchRecognizer: UIPinchGestureRecognizer!
 
     private var conversation: Conversation?
+
+    /// Fires when the user begins a pinch on the chat surface (dismiss intent).
+    var onPinchBegan: (() -> Void)?
+    /// Fires on every pinch change. `scale` is the recognizer's current scale
+    /// (1.0 = no change; <1 = pinch-in; >1 = pinch-out).
+    var onPinchChanged: ((CGFloat) -> Void)?
+    /// Fires when pinch ends. Caller decides commit vs cancel using scale + velocity.
+    var onPinchEnded: ((CGFloat, CGFloat) -> Void)?
+    /// Fires when the user taps the ↖ expand icon — a manual trigger for
+    /// the same dismiss sequence the pinch gesture invokes. V2RootVC drives
+    /// progress 0→1 via the existing display-link machinery (no scale or
+    /// velocity required).
+    var onDismissRequested: (() -> Void)?
 
     override func loadView() {
         view = UIView()
@@ -21,7 +36,69 @@ final class ChatViewController: UIViewController {
         installHeader()
         installScrollView()
         installComposer()
+        installExpandButton()
         activateConstraints()
+        installPinchRecognizer()
+    }
+
+    private func installExpandButton() {
+        let icon = UIImage(systemName: "arrow.up.left.and.arrow.down.right")
+        expandButton.setImage(icon, for: .normal)
+        expandButton.tintColor = Theme.Text.tertiary
+        expandButton.translatesAutoresizingMaskIntoConstraints = false
+        expandButton.addTarget(self, action: #selector(handleExpandTap), for: .touchUpInside)
+        view.addSubview(expandButton)
+        NSLayoutConstraint.activate([
+            expandButton.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor, constant: 8),
+            expandButton.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 20),
+            expandButton.widthAnchor.constraint(equalToConstant: 32),
+            expandButton.heightAnchor.constraint(equalToConstant: 32)
+        ])
+    }
+
+    @objc private func handleExpandTap() {
+        onDismissRequested?()
+    }
+
+    private func installPinchRecognizer() {
+        let pinch = UIPinchGestureRecognizer(target: self, action: #selector(handlePinch(_:)))
+        view.addGestureRecognizer(pinch)
+        pinchRecognizer = pinch
+    }
+
+    @objc private func handlePinch(_ recognizer: UIPinchGestureRecognizer) {
+        switch recognizer.state {
+        case .began:
+            onPinchBegan?()
+        case .changed:
+            onPinchChanged?(recognizer.scale)
+        case .ended, .cancelled, .failed:
+            onPinchEnded?(recognizer.scale, recognizer.velocity)
+            recognizer.scale = 1.0
+        default:
+            break
+        }
+    }
+
+    /// Called by V2RootViewController per-frame while a pinch-to-dismiss is
+    /// active. `progress` is 0 (chat-rest) → 1 (fully dismissed). Drives the
+    /// chat's internal-content exits: composer slides down + fades, header
+    /// + scroll content fade as the dismiss completes. Counterpart to the
+    /// reference dot_pinch video's frames 5.3–5.7s where the composer +
+    /// keyboard slide off-screen ahead of the chat-card resolution.
+    func setDismissProgress(_ progress: CGFloat) {
+        let p = max(0, min(1, progress))
+
+        let composerP = smoothstep(0.3, 0.7, p)
+        let exitDistance = view.bounds.height * 0.4
+        composerContainer.transform = CGAffineTransform(translationX: 0, y: exitDistance * composerP)
+        composerContainer.alpha = 1 - composerP
+
+        let headerP = smoothstep(0.5, 0.9, p)
+        headerLabel.alpha = 1 - headerP
+
+        let bubbleP = smoothstep(0.55, 0.9, p)
+        scrollView.alpha = 1 - bubbleP
     }
 
     func configure(with conversation: Conversation) {
@@ -78,6 +155,13 @@ final class ChatViewController: UIViewController {
         composerTextField.placeholder = "Share with Dot…"
         composerTextField.borderStyle = .none
         composerTextField.backgroundColor = .clear
+        // Block taps from reaching the text field → never becomes first
+        // responder → keyboard never appears on the chat interface. The
+        // placeholder stays visible (visual-only composer). Pinch-to-
+        // dismiss and ↖ button remain interactive because they're on
+        // the chat view itself, not the composer.
+        composerTextField.isUserInteractionEnabled = false
+        composerContainer.isUserInteractionEnabled = false
         composerContainer.addSubview(composerTextField)
     }
 

@@ -1,8 +1,19 @@
+# macOS
+.DS_Store
+
 # Build outputs
 build/
 DerivedData/
 *.xcuserstate
 *.xcuserdatad/
+xcuserdata/
+*.xccheckout
+*.ipa
+*.xcarchive
+
+# Swift Package Manager
+.swiftpm/
+.build/
 
 # Audit captures — visual verification artifacts, regenerated per run
 docs/audit/captures/

@@ -19,6 +19,27 @@ final class CellView: UIView {
 
     private(set) var tapRecognizer: UITapGestureRecognizer!
 
+    // Press-feedback state. UILongPressGestureRecognizer with
+    // minimumPressDuration=0 fires immediately on touch-down, lets us drive
+    // a time-based scale-down via CADisplayLink (the gesture itself doesn't
+    // fire .changed). Lives on `cell.transform` — composes multiplicatively
+    // under contentHost's morph windup transform, so no conflict.
+    private var pressGesture: UILongPressGestureRecognizer!
+    private var pressDisplayLink: CADisplayLink?
+    private var pressStartTime: CFTimeInterval = 0
+    private var longPressHapticFired = false
+    private let pressDownHaptic = UIImpactFeedbackGenerator(style: .light)
+    private let longPressHaptic = UIImpactFeedbackGenerator(style: .rigid)
+    /// Scale floor on long press. Orthodox iOS range (0.94–0.97 for buttons,
+    /// 0.85 for icon long-press). 0.94 is a compromise: visible but gentle.
+    private static let pressMinScale: CGFloat = 0.94
+    /// Time to reach `pressMinScale` from identity. After this the scale
+    /// holds at floor.
+    private static let pressRampDuration: CFTimeInterval = 0.4
+    /// Long-press threshold for the secondary `.rigid` haptic. Fires once
+    /// per press.
+    private static let longPressThreshold: CFTimeInterval = 0.3
+
     /// Conversation this cell is currently bound to. Used as a pool key for
     /// keyed reattachment across round-trips.
     private(set) var activeConversationID: UUID?
@@ -240,6 +261,104 @@ final class CellView: UIView {
         tap.cancelsTouchesInView = false
         addGestureRecognizer(tap)
         tapRecognizer = tap
+
+        installPressFeedback()
+    }
+
+    /// Install the press-feedback gesture. `UILongPressGestureRecognizer`
+    /// with `minimumPressDuration=0` fires `.began` immediately on touch-
+    /// down (faster than UIControl events, doesn't compete with the tap
+    /// recognizer because gestures coexist on UIView). `cancelsTouchesInView
+    /// = false` so the tap recognizer still fires on release.
+    private func installPressFeedback() {
+        let press = UILongPressGestureRecognizer(target: self, action: #selector(handlePressFeedback(_:)))
+        press.minimumPressDuration = 0
+        press.cancelsTouchesInView = false
+        addGestureRecognizer(press)
+        pressGesture = press
+    }
+
+    @objc private func handlePressFeedback(_ recognizer: UILongPressGestureRecognizer) {
+        switch recognizer.state {
+        case .began:
+            pressStartTime = CACurrentMediaTime()
+            longPressHapticFired = false
+            // Prepare both generators ahead — `impactOccurred` after `prepare`
+            // has lower latency. Light fires immediately (touch-down feedback).
+            pressDownHaptic.prepare()
+            longPressHaptic.prepare()
+            pressDownHaptic.impactOccurred(intensity: 0.7)
+            startPressDisplayLink()
+        case .ended:
+            stopPressDisplayLink()
+            // Spring back to identity. Runs in parallel with the morph
+            // windup (contentHost.scale 0→0.08) that fires from onTap —
+            // they compose multiplicatively (cell.transform * contentHost
+            // .layer.transform), creating a slight extra bounce as the
+            // cell expands. No conflict.
+            UIView.animate(
+                withDuration: 0.22,
+                delay: 0,
+                usingSpringWithDamping: 0.62,
+                initialSpringVelocity: 0,
+                options: [.allowUserInteraction, .beginFromCurrentState]
+            ) {
+                self.transform = .identity
+            }
+            // Fire the tap action. UILongPressGestureRecognizer with
+            // minimumPressDuration=0 enters .began on touch-down, which
+            // by default blocks the cell-level UITapGestureRecognizer
+            // (same-view conflict) AND the canvas-level tap recognizer
+            // in V2RootVC (descendant-gestures-take-priority rule —
+            // ancestor recognizers wait for descendants to FAIL before
+            // they can recognize; this LongPress recognizes successfully
+            // and never fails, so the ancestor Tap stays blocked). So we
+            // bypass both and fire onTap directly here.
+            onTap?(index)
+        case .cancelled, .failed:
+            stopPressDisplayLink()
+            // Spring back, no tap, no haptic (user dragged off).
+            UIView.animate(
+                withDuration: 0.25,
+                delay: 0,
+                usingSpringWithDamping: 0.7,
+                initialSpringVelocity: 0,
+                options: [.allowUserInteraction, .beginFromCurrentState]
+            ) {
+                self.transform = .identity
+            }
+        default:
+            break
+        }
+    }
+
+    private func startPressDisplayLink() {
+        pressDisplayLink?.invalidate()
+        let link = CADisplayLink(target: self, selector: #selector(pressTick(_:)))
+        link.add(to: .main, forMode: .common)
+        pressDisplayLink = link
+    }
+
+    private func stopPressDisplayLink() {
+        pressDisplayLink?.invalidate()
+        pressDisplayLink = nil
+    }
+
+    @objc private func pressTick(_ link: CADisplayLink) {
+        let elapsed = CACurrentMediaTime() - pressStartTime
+
+        // Cubic ease-out from 1.0 toward `pressMinScale` over `pressRampDuration`.
+        // After ramp duration, holds at the floor (no further movement).
+        let t = min(1.0, elapsed / Self.pressRampDuration)
+        let easedT = 1.0 - pow(1.0 - CGFloat(t), 3)
+        let scale = 1.0 - (1.0 - Self.pressMinScale) * easedT
+        transform = CGAffineTransform(scaleX: scale, y: scale)
+
+        // Long-press threshold haptic — escalation cue. Only fires once.
+        if !longPressHapticFired && elapsed >= Self.longPressThreshold {
+            longPressHapticFired = true
+            longPressHaptic.impactOccurred(intensity: 0.55)
+        }
     }
 
     // MARK: - Data binding

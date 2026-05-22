@@ -1136,6 +1136,187 @@ final class TimelineCanvas: UIView, UIGestureRecognizerDelegate {
         animateCameraToCellRestPath(initialExtensionVelocity: 0)
     }
 
+    /// Scrub the active cell's extension by progress ∈ [0, 1].
+    /// 0 = natural cell-rest height. 1 = full chat-rest height.
+    /// Used by V2RootViewController's pinch-to-dismiss to scrub the cell's
+    /// reverse-extension in lockstep with the chat's similarity-transform
+    /// shrink — both layers move as ONE thing during the gesture.
+    /// Also fades `chatRestCenterLabel` alpha to track the extension so the
+    /// centered "Today" label doesn't linger as the cell shrinks back.
+    func setActiveCellExtensionProgress(_ progress: CGFloat) {
+        guard let idx = activeCellIndex,
+              let cell = instantiatedCells[idx],
+              let heightC = cell.heightConstraint else { return }
+        let naturalH = cell.naturalHeight
+        guard naturalH > 0, bounds.height > 0 else { return }
+        let chatRestExtension = bounds.height
+        let clamped = max(0, min(1, progress))
+        let newExtension = naturalH + (chatRestExtension - naturalH) * clamped
+        CATransaction.withSuppressedActions {
+            heightC.constant = newExtension
+            contentHost.layoutIfNeeded()
+            cell.chatRestCenterLabel.alpha = clamped
+            cell.setCamera(camera, viewport: bounds)
+            updateNeighborTranslations()
+            updateEdgeMaskAlphas()
+        }
+    }
+
+    // MARK: - Pinch-to-dismiss scrub API
+
+    /// Natural center-Y of the cell at `idx` in PAGE coords. Returns nil if
+    /// the cell isn't currently instantiated. Used by V2RootViewController
+    /// to compute the dismiss target transform (where the chat should land
+    /// in viewport space at cell-rest).
+    func cellNaturalCenterY(at idx: Int) -> CGFloat? {
+        return instantiatedCells[idx]?.frame.midY
+    }
+
+    /// Horizontal inset (pt) used for cell layout. Public so dismiss target
+    /// computations can match cell bounds.
+    static var cellHorizontalInsetPublic: CGFloat { cellHorizontalInset }
+
+    private var capturedChatRestScale: CGFloat = 1
+    private var capturedChatRestTy: CGFloat = 0
+    private var capturedChatRestLabelOpacity: CGFloat = 1
+    private var capturedChatRestCameraTranslation: CGFloat = 0
+    private var capturedChatRestGradientOpacity: Float = 1
+    private var dismissActiveCellIndex: Int?
+
+    /// Capture chat-rest visual state, strip the persistent CAAnimations
+    /// the forward morph left behind, AND immediately snap the canvas to
+    /// cell-rest behind-the-scenes (`contentHost.layer.transform` to
+    /// identity, camera to cell-rest scroll position which triggers neighbor
+    /// re-dequeue via `updateVisibleCells`). This is invisible to the user
+    /// because canvas.alpha is 0 throughout — the chat overlay still occludes
+    /// everything. The benefit: cell content stays at NATURAL scale the
+    /// entire dismiss. No intermediate `contentHost` scale (2x, 3x, etc.)
+    /// is ever visible. As `canvas.alpha` rises from 0 to 1 in the late
+    /// dismiss phase, cells reveal at correct scale immediately.
+    func beginDismiss(forCellAt idx: Int) {
+        guard let cell = instantiatedCells[idx] else { return }
+
+        let presentation = contentHost.layer.presentation()?.transform ?? contentHost.layer.transform
+        let scale = sqrt(presentation.m11 * presentation.m11 + presentation.m12 * presentation.m12)
+        let ty = presentation.m42
+
+        contentHost.layer.removeAnimation(forKey: "windup.scale")
+        contentHost.layer.removeAnimation(forKey: "zoom.scale")
+        contentHost.layer.removeAnimation(forKey: "windup.translate")
+        contentHost.layer.removeAnimation(forKey: "morph.centering")
+
+        // Capture + strip the page gradient's persistent opacity animation.
+        // Pin model opacity to the current presentation so there's no jump.
+        let gradientPresOpacity = pageGradientLayer.presentation()?.opacity ?? pageGradientLayer.opacity
+        pageGradientLayer.removeAnimation(forKey: "pageGradient.opacity")
+        pageGradientLayer.opacity = gradientPresOpacity
+        capturedChatRestGradientOpacity = gradientPresOpacity
+
+        capturedChatRestScale = scale > 0 ? scale : 1
+        capturedChatRestTy = ty
+        capturedChatRestCameraTranslation = camera.translation
+
+        let label: UILabel = cell.chatRestCenterLabel
+        let labelOp = label.layer.presentation()?.opacity ?? label.layer.opacity
+        label.layer.removeAnimation(forKey: "centerLabel.opacity")
+        capturedChatRestLabelOpacity = CGFloat(labelOp)
+
+        cell.morphInProgress = false
+        dismissActiveCellIndex = idx
+
+        // SNAP contentHost to identity — cells will render at natural scale.
+        // Hidden by canvas.alpha=0 until late in the dismiss.
+        contentHost.layer.transform = CATransform3DIdentity
+
+        // SNAP centered label to invisible — we don't want a tiny counter-
+        // scaled "Today" appearing when canvas fades in.
+        label.layer.opacity = 0
+        label.alpha = 0
+        label.transform = .identity
+
+        // SNAP camera to cell-rest position. `setCamera` triggers
+        // `updateVisibleCells` → re-dequeues neighbors pruned during chat-rest.
+        let cellRestTranslation = lastCellRestScrollY + bounds.height / 2
+        setCamera(Camera(translation: cellRestTranslation))
+
+        print("[dismiss] beginDismiss idx=\(idx) capturedScale=\(scale) ty=\(ty) — snapped to cell-rest")
+    }
+
+    /// Drive the canvas portion of the dismiss. Now ONLY fades cell chrome
+    /// IN (smoothstep 0.7–1.0). The contentHost transform was already
+    /// snapped to identity at `beginDismiss`, so there's no intermediate-
+    /// scale artifact during the scrub. The canvas itself is hidden via
+    /// `timelineCanvas.alpha` (driven by V2RootVC) until the late phase,
+    /// so the user doesn't see the snap.
+    func setDismissProgress(_ progress: CGFloat) {
+        guard let idx = dismissActiveCellIndex,
+              let cell = instantiatedCells[idx] else { return }
+        let p = max(0, min(1, progress))
+
+        let chromeInP = smoothstep(0.7, 1.0, p)
+        cell.dateLabel.alpha = chromeInP
+        cell.topicSummaryLabel.alpha = chromeInP
+        cell.todayLabel.alpha = chromeInP
+        cell.pinchGlyph.alpha = chromeInP
+
+        // Fade the page gradient back in (was 0 at chat-rest, → 1 at
+        // cell-rest). Same window as the canvas reveal so the gradient
+        // is fully visible when the user sees the cell-rest state.
+        let gradientInP = smoothstep(0.55, 0.95, p)
+        pageGradientLayer.opacity = capturedChatRestGradientOpacity + (1 - capturedChatRestGradientOpacity) * Float(gradientInP)
+    }
+
+    /// Commit the dismiss. Final cleanup — contentHost + camera were already
+    /// snapped to cell-rest at beginDismiss. Just ensures chrome is fully
+    /// visible and clears the dismiss-active-cell pointer.
+    func completeDismiss(at idx: Int) {
+        guard let cell = instantiatedCells[idx] else { return }
+
+        cell.dateLabel.alpha = 1
+        cell.topicSummaryLabel.alpha = 1
+        cell.todayLabel.alpha = 1
+        cell.pinchGlyph.alpha = 1
+
+        // Snap page gradient back to fully visible — cell-rest invariant.
+        pageGradientLayer.opacity = 1
+
+        dismissActiveCellIndex = nil
+        print("[dismiss] completeDismiss idx=\(idx)")
+    }
+
+    /// Restore chat-rest visual state. Re-applies the captured chat-rest
+    /// `contentHost.layer.transform` (since we snapped it to identity at
+    /// beginDismiss), restores the camera to chat-rest position, and
+    /// reverts the centered label + cell chrome to their chat-rest values.
+    func cancelDismiss(at idx: Int) {
+        guard let cell = instantiatedCells[idx] else { return }
+
+        var t = CATransform3DIdentity
+        t = CATransform3DScale(t, capturedChatRestScale, capturedChatRestScale, 1)
+        t = CATransform3DTranslate(t, 0, capturedChatRestTy / capturedChatRestScale, 0)
+        contentHost.layer.transform = t
+
+        setCamera(Camera(translation: capturedChatRestCameraTranslation))
+
+        let label: UILabel = cell.chatRestCenterLabel
+        label.layer.opacity = Float(capturedChatRestLabelOpacity)
+        label.alpha = capturedChatRestLabelOpacity
+        let counterScale = 1.0 / max(capturedChatRestScale, 1)
+        label.transform = CGAffineTransform(scaleX: counterScale, y: counterScale)
+
+        cell.dateLabel.alpha = 0
+        cell.topicSummaryLabel.alpha = 0
+        cell.todayLabel.alpha = 0
+        cell.pinchGlyph.alpha = 0
+        cell.morphInProgress = true
+
+        // Snap gradient back to chat-rest opacity (0).
+        pageGradientLayer.opacity = capturedChatRestGradientOpacity
+
+        dismissActiveCellIndex = nil
+        print("[dismiss] cancelDismiss idx=\(idx) — restored to chat-rest")
+    }
+
     /// Public entry — tap-to-chat. Guarded against re-entry (in-flight morph)
     /// and tap-during-active-cell. The internal Path called by pinch .ended
     /// commit is unguarded so pinch-to-chat commits still work with
@@ -1220,7 +1401,26 @@ final class TimelineCanvas: UIView, UIGestureRecognizerDelegate {
         centerLabelOpacity.timingFunction = CAMediaTimingFunction(controlPoints: 0.85, 0.0, 0.5, 1.0)
         centerLabelOpacity.fillMode = .forwards
         centerLabelOpacity.isRemovedOnCompletion = false
-        activeCell.chatRestCenterLabel.layer.add(centerLabelOpacity, forKey: "centerLabel.opacity")
+        let centerLabel: UILabel = activeCell.chatRestCenterLabel
+        centerLabel.layer.add(centerLabelOpacity, forKey: "centerLabel.opacity")
+
+        // Fade out the page gradient during morph. At chat-rest scale the
+        // cell's cornerRadius (locked at Theme.Radius.card) visually scales
+        // 4.92x → ~124pt of rounded curve. For boundary cells (first/last)
+        // the rounded corner cut-out exposes pageGradientLayer's mauve-pink
+        // bottom stop in the viewport. Fading the gradient to 0 lets
+        // V2RootVC.view.backgroundColor (Theme.Cell.fill, cream) show
+        // through instead — blends with the cell, no mauve pink artifact.
+        // Restored during dismiss via beginDismiss/setDismissProgress.
+        let gradientFade = CABasicAnimation(keyPath: "opacity")
+        gradientFade.fromValue = 1
+        gradientFade.toValue = 0
+        gradientFade.duration = totalMorphDuration
+        gradientFade.beginTime = now
+        gradientFade.timingFunction = CAMediaTimingFunction(controlPoints: 0.7, 0.0, 0.4, 1.0)
+        gradientFade.fillMode = .forwards
+        gradientFade.isRemovedOnCompletion = false
+        pageGradientLayer.add(gradientFade, forKey: "pageGradient.opacity")
 
         UIView.animate(withDuration: 0.08, delay: 0.0, options: [.curveEaseOut, .allowUserInteraction], animations: {
             activeCell.dateLabel.alpha = 0

@@ -1310,6 +1310,7 @@ final class TimelineCanvas: UIView, UIGestureRecognizerDelegate {
             cameraAnimator.stop(immediately: true)
             extensionAnimator.stop(immediately: true)
 
+            let revealK = k
             startMasterTimer(duration: 1.2) { [weak self] in
                 guard let self else { return }
                 CATransaction.withSuppressedActions {
@@ -1317,6 +1318,12 @@ final class TimelineCanvas: UIView, UIGestureRecognizerDelegate {
                 }
                 self.masterActiveCellIndex = nil
                 self.updateNeighborTranslations()
+                // Parity-Break Ledger 8B (intentional UX delta): pinch-commit
+                // path now fires reveal at master-timer completion. Tap-to-chat
+                // fires via the asyncAfter in animateCameraToChatRest; the two
+                // entry points do not overlap (verified per 9O.6 codepath
+                // trace — public method and *Path are disjoint).
+                self.onMorphRevealReady?(revealK)
             }
         } else {
             // pinch-to-cells / cancelled — two-spring path (camera + extension).

@@ -97,7 +97,12 @@ final class TimelineCanvas: UIView, UIGestureRecognizerDelegate {
     /// Finite duration + linear master clock + per-property curves — replaces
     /// a spring whose asymptotic settling tail reads as "still animating".
     private var masterTimer: CADisplayLink?
-    private var masterTimerStart: CFTimeInterval = 0
+    /// DisplayLink-local accumulator. Sums `link.targetTimestamp - link.timestamp`
+    /// per tick rather than subtracting wall-clock `CACurrentMediaTime` —
+    /// when backgrounded mid-morph the link pauses, the accumulator pauses
+    /// with it, and on foreground resume `rawT` continues from where it
+    /// left off instead of snapping to t=1.0.
+    private var masterTimerElapsed: TimeInterval = 0
     private var masterTimerDuration: TimeInterval = 5.0
     private var masterTimerCompletion: (() -> Void)?
 
@@ -108,6 +113,12 @@ final class TimelineCanvas: UIView, UIGestureRecognizerDelegate {
     private var masterEndCameraY: CGFloat = 0
     private var masterUnifiedArcMagnitude: CGFloat = 0
     private var masterActiveCellIndex: Int? = nil
+
+    /// Cancellation handle for the deferred `onMorphRevealReady` fire that
+    /// follows the tap-to-chat asyncAfter path. Cancelled on pinch .began,
+    /// `setActiveCellIndex(nil)`, `reloadData`, and `deinit` so a cell that
+    /// engages a new gesture after tap does not get retroactively revealed.
+    private var pendingRevealWorkItem: DispatchWorkItem?
 
     // MARK: - Cell-rest scroll-Y persistence
 
@@ -166,6 +177,11 @@ final class TimelineCanvas: UIView, UIGestureRecognizerDelegate {
     @available(*, unavailable)
     required init?(coder: NSCoder) {
         fatalError("TimelineCanvas does not support NSCoder decoding")
+    }
+
+    deinit {
+        masterTimer?.invalidate()
+        pendingRevealWorkItem?.cancel()
     }
 
     private func installViewHierarchy() {
@@ -321,12 +337,11 @@ final class TimelineCanvas: UIView, UIGestureRecognizerDelegate {
 
     // MARK: - Public API
 
-    /// Apply a new camera. Validates, stores, writes the CATransform3D, updates
-    /// visible cells, fires the change callback. Validation at the canvas
-    /// boundary is load-bearing — Camera is a mutable struct, callers can
-    /// reassign `.translation = .nan` after construction.
+    /// Apply a new camera. Stores, writes the CATransform3D, updates visible
+    /// cells, fires the change callback. With `Camera.translation` now `let`
+    /// (Task 0.14), the only entry point is `Camera.init`, which carries the
+    /// finite precondition — boundary re-validation is unrepresentable.
     func setCamera(_ newCamera: Camera) {
-        Camera.validate(translation: newCamera.translation)
         camera = newCamera
         hasExternalCameraWrite = true
         CATransaction.withSuppressedActions {
@@ -347,12 +362,23 @@ final class TimelineCanvas: UIView, UIGestureRecognizerDelegate {
 
     /// Update `activeCellIndex` and reconcile dependent state. Single
     /// gateway so pan-enablement and any future invariants stay coherent.
+    /// Out-of-bounds non-nil indices trap immediately — silent dictionary
+    /// misses downstream would surface as no-op state 3 frames later.
     private func setActiveCellIndex(_ newValue: Int?) {
+        if let newValue {
+            precondition(
+                (0..<(dataSource?.numberOfCells(in: self) ?? 0)).contains(newValue),
+                "setActiveCellIndex: index \(newValue) out of range"
+            )
+        }
         activeCellIndex = newValue
         panRecognizer.isEnabled = (newValue == nil)
         // When transitioning to no-active-cell-rest, reset neighbor
-        // translations so all cells return to natural page positions.
+        // translations so all cells return to natural page positions and
+        // cancel any deferred reveal targeting the cleared cell.
         if newValue == nil {
+            pendingRevealWorkItem?.cancel()
+            pendingRevealWorkItem = nil
             updateNeighborTranslations()
         }
     }
@@ -660,9 +686,6 @@ final class TimelineCanvas: UIView, UIGestureRecognizerDelegate {
                     horizontalInset: Self.cellHorizontalInset
                 )
                 instantiatedCells[i] = cell
-                cell.onTap = { [weak self] index in
-                    self?.handleCellTap(at: index)
-                }
                 // State-preservation seam: skip configure on a keyed-pool hit so
                 // scroll offset / composer text survive the round-trip.
                 if !preservedState {
@@ -943,8 +966,14 @@ final class TimelineCanvas: UIView, UIGestureRecognizerDelegate {
             handlePinchBegan(recognizer)
         case .changed:
             handlePinchChanged(recognizer)
-        case .ended, .cancelled, .failed:
+        case .ended:
             handlePinchEnded(recognizer)
+        case .cancelled, .failed:
+            // UIKit-contract correctness: Control Center swipe / incoming
+            // call → recognizer goes to .cancelled. .ended's commit-or-bail
+            // would land the user in a state they never chose. Cancelled
+            // restores to whichever rest the gesture originated from.
+            handlePinchCancelled(recognizer)
         case .possible:
             break
         @unknown default:
@@ -957,6 +986,11 @@ final class TimelineCanvas: UIView, UIGestureRecognizerDelegate {
     internal func handlePinchBegan(_ recognizer: UIPinchGestureRecognizer) {
         cameraAnimator.stop(immediately: true)
         extensionAnimator.stop(immediately: true)
+        // Cancel any in-flight reveal from a prior tap-to-chat — a fresh
+        // pinch begins a new interaction; the previous deferred reveal must
+        // not retroactively fire mid-pinch.
+        pendingRevealWorkItem?.cancel()
+        pendingRevealWorkItem = nil
         self.endEditing(true)
 
         let screenCenter = recognizer.location(in: self)
@@ -1099,6 +1133,39 @@ final class TimelineCanvas: UIView, UIGestureRecognizerDelegate {
         }
     }
 
+    /// UIKit-cancellation path. Distinct from `.ended` so the commit-or-bail
+    /// decision does NOT run on involuntary cancellation (Control Center
+    /// swipe / incoming call). Restores to whichever rest the gesture
+    /// originated from with zero velocity — recognizer.scale at .cancelled
+    /// is unreliable, so origin classification (pinchInitialExtension) is
+    /// the only sound signal.
+    internal func handlePinchCancelled(_ recognizer: UIPinchGestureRecognizer) {
+        defer {
+            pinchInitialScale = 1.0
+            pinchInitialExtension = 0
+        }
+        guard let activeIdx = activeCellIndex,
+              let activeCell = instantiatedCells[activeIdx] else {
+            return
+        }
+        let naturalH = activeCell.naturalHeight
+        let originatedFromCellRest = pinchInitialExtension <= naturalH * 1.05
+        if originatedFromCellRest {
+            animateCameraToCellRestPath(
+                initialExtensionVelocity: 0,
+                cameraTranslationVelocity: 0,
+                direction: .cancelled
+            )
+        } else {
+            animateCameraToChatRestPath(
+                forCellAt: activeIdx,
+                initialVelocity: 0,
+                cameraTranslationVelocity: 0,
+                direction: .cancelled
+            )
+        }
+    }
+
     /// Direction classification keyed off destination + origin, NOT off
     /// recognizer.scale sign.
     fileprivate enum SpringDirection {
@@ -1155,6 +1222,17 @@ final class TimelineCanvas: UIView, UIGestureRecognizerDelegate {
         guard k >= 0, k < count else { return }
         guard let activeCell = instantiatedCells[k] else { return }
         guard contentHost.layer.animation(forKey: "windup.scale") == nil else { return }
+
+        // Apple HIG vestibular-trigger compliance: when Reduce Motion is on,
+        // snap to chat-rest end-state synchronously instead of running the
+        // 1.5s arc morph. The snap is end-state-equivalent (Decision X3 /
+        // 9R.4.5) — chrome alphas + counter-scale + contentHost transform
+        // all match the morph's t=1.0 state.
+        if UIAccessibility.isReduceMotionEnabled {
+            snapToChatRestState(forCellAt: k)
+            onMorphRevealReady?(k)
+            return
+        }
 
         contentHost.bringSubviewToFront(activeCell)
         activeCell.morphInProgress = true
@@ -1246,8 +1324,55 @@ final class TimelineCanvas: UIView, UIGestureRecognizerDelegate {
         }, completion: nil)
 
         let revealReadyDelay: TimeInterval = totalMorphDuration + 0.1
-        DispatchQueue.main.asyncAfter(deadline: .now() + revealReadyDelay) { [weak self] in
-            self?.onMorphRevealReady?(k)
+        let revealK = k
+        let workItem = DispatchWorkItem { [weak self] in
+            guard let self else { return }
+            // Suppress fire if the morph was abandoned mid-flight (pinch
+            // .began on another cell, reloadData, or activeCell cleared).
+            guard self.activeCellIndex == revealK else { return }
+            self.onMorphRevealReady?(revealK)
+            self.pendingRevealWorkItem = nil
+        }
+        pendingRevealWorkItem?.cancel()
+        pendingRevealWorkItem = workItem
+        DispatchQueue.main.asyncAfter(deadline: .now() + revealReadyDelay, execute: workItem)
+    }
+
+    /// Reduce-Motion bypass for the tap-to-chat morph. Synchronous one-frame
+    /// transition to the chat-rest end-state. Math is end-state-equivalent
+    /// to the morph's t=1.0 state per Decision X3 / 9R.4.5 — geometry +
+    /// 4 chrome alphas + center label visibility + center label counter-scale
+    /// + contentHost transform reset all written in one suppressed CATransaction.
+    /// Without the full reset, Reduce-Motion users would land at chat-rest
+    /// with visible chrome and invisible center label (Pillar 10.1 violation).
+    private func snapToChatRestState(forCellAt k: Int) {
+        guard let cell = instantiatedCells[k], let heightC = cell.heightConstraint else { return }
+        let naturalH = cell.naturalHeight
+        guard naturalH > 0, bounds.height > 0 else { return }
+        let chatRestFactor = bounds.height / naturalH
+        let labelCounterScale = 1.0 / chatRestFactor
+
+        CATransaction.withSuppressedActions {
+            // Geometry — match the morph's t=1.0 destination.
+            heightC.constant = naturalH * chatRestFactor
+            camera = Camera(translation: cell.frame.midY)
+            applyCameraTransform()
+            contentHost.layoutIfNeeded()
+            setActiveCellIndex(k)
+
+            // Chrome end-state (Decision X3 — without these the snap lands
+            // visually-broken vs the morph endpoint).
+            cell.dateLabel.alpha = 0
+            cell.topicSummaryLabel.alpha = 0
+            cell.todayLabel.alpha = 0
+            cell.pinchGlyph.alpha = 0
+            cell.chatRestCenterLabel.alpha = 1
+            cell.chatRestCenterLabel.transform = CGAffineTransform(scaleX: labelCounterScale, y: labelCounterScale)
+
+            // contentHost transform reset — the morph applies a sin-bell arc
+            // transform mid-flight; the snap path must clear it explicitly
+            // so the final state equals identity.
+            contentHost.layer.transform = CATransform3DIdentity
         }
     }
 
@@ -1330,20 +1455,26 @@ final class TimelineCanvas: UIView, UIGestureRecognizerDelegate {
 
     /// Deterministic CADisplayLink master timer. Linear raw t — outer easing
     /// stacked on per-property curves caused weird normalization. Per-property
-    /// curves in applyMasterTick do their own shaping.
+    /// curves in applyMasterTick do their own shaping. ProMotion 120Hz is
+    /// requested so the morph remains smooth even when no springs are running
+    /// (otherwise the link silently drops to 60Hz mid-morph).
     private func startMasterTimer(duration: TimeInterval, completion: @escaping () -> Void) {
         masterTimer?.invalidate()
-        masterTimerStart = CACurrentMediaTime()
+        masterTimerElapsed = 0
         masterTimerDuration = duration
         masterTimerCompletion = completion
-        let link = CADisplayLink(target: self, selector: #selector(masterTimerTick))
+        let link = CADisplayLink(target: self, selector: #selector(masterTimerTick(_:)))
+        link.preferredFrameRateRange = CAFrameRateRange(minimum: 80, maximum: 120, preferred: 120)
         link.add(to: .main, forMode: .common)
         masterTimer = link
     }
 
-    @objc private func masterTimerTick() {
-        let elapsed = CACurrentMediaTime() - masterTimerStart
-        let rawT = CGFloat(min(elapsed / masterTimerDuration, 1.0))
+    @objc private func masterTimerTick(_ link: CADisplayLink) {
+        // DisplayLink-local time accumulator — pauses with the link when
+        // backgrounded, resumes from where it left off. Wall-clock subtraction
+        // would clamp to 1.0 on resume and produce a one-frame snap-to-end.
+        masterTimerElapsed += link.targetTimestamp - link.timestamp
+        let rawT = CGFloat(min(masterTimerElapsed / masterTimerDuration, 1.0))
         applyMasterTick(rawT)
         if rawT >= 1.0 {
             masterTimer?.invalidate()
@@ -1453,10 +1584,6 @@ final class TimelineCanvas: UIView, UIGestureRecognizerDelegate {
             setActiveCellIndex(nil)
             restoreNaturalSiblingOrder()
         }
-    }
-
-    private func handleCellTap(at index: Int) {
-        animateCameraToChatRest(forCellAt: index)
     }
 
     /// Pan-end deceleration. Single-axis translation spring; valid range

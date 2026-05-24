@@ -14,11 +14,6 @@ final class CellView: UIView {
     /// Data index this cell currently represents. -1 sentinel before configuration.
     var index: Int = -1
 
-    /// Tap callback. Reads `self.index` at fire time (not a captured value).
-    var onTap: ((Int) -> Void)?
-
-    private(set) var tapRecognizer: UITapGestureRecognizer!
-
     /// Conversation this cell is currently bound to. Used as a pool key for
     /// keyed reattachment across round-trips.
     private(set) var activeConversationID: UUID?
@@ -78,7 +73,6 @@ final class CellView: UIView {
         }
 
         setupSubviews()
-        installTapRecognizer()
     }
 
     @available(*, unavailable)
@@ -231,17 +225,6 @@ final class CellView: UIView {
         ])
     }
 
-    private func installTapRecognizer() {
-        let tap = UITapGestureRecognizer(target: self, action: #selector(handleTap))
-        tap.numberOfTapsRequired = 1
-        tap.numberOfTouchesRequired = 1
-        // cancelsTouchesInView=false so cell.onTap doesn't swallow taps the
-        // textfield or sendButton would otherwise handle at chat-rest.
-        tap.cancelsTouchesInView = false
-        addGestureRecognizer(tap)
-        tapRecognizer = tap
-    }
-
     // MARK: - Data binding
 
     func configure(with conversation: Conversation) {
@@ -290,12 +273,6 @@ final class CellView: UIView {
             leadingC.constant = currentInset
             widthC.constant = pageWidth - 2 * currentInset
         }
-    }
-
-    // MARK: - Tap
-
-    @objc private func handleTap() {
-        onTap?(index)
     }
 
     // MARK: - Morph state lifecycle

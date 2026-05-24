@@ -16,15 +16,6 @@ struct Camera: Equatable {
         self.translation = translation
     }
 
-    /// Validate camera input. Retained as a thin wrapper around the same
-    /// precondition init enforces — call sites at canvas boundaries (setCamera)
-    /// can keep using it until they're updated to trust the type system. With
-    /// `translation` now `let`, post-init `.nan` reassignment is unrepresentable,
-    /// so this method is redundant at the type level and slated for removal.
-    static func validate(translation: CGFloat) {
-        precondition(translation.isFinite, "Camera.translation must be finite")
-    }
-
     /// Placeholder camera at translation=0, used until layout runs.
     static let identity = Camera(translation: 0)
 

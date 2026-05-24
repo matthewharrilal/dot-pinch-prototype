@@ -16,8 +16,8 @@ final class WaveR41SubstrateCanaryTests: XCTestCase {
     func testCameraAndExtensionAnimatorsShareSameAnimationController() {
         let canvas = TimelineCanvas(controller: AnimationController(), frame: viewport)
 
-        let cameraController = canvas.cameraAnimator.animationControllerIdentity
-        let extensionController = canvas.extensionAnimator.animationControllerIdentity
+        let cameraController = canvas.cameraAnimator.animationControllerIdentityForTesting
+        let extensionController = canvas.extensionAnimator.animationControllerIdentityForTesting
 
         XCTAssertNotNil(cameraController,
                         "cameraAnimator must have a live AnimationController reference")

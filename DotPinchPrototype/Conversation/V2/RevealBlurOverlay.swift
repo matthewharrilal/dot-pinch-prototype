@@ -14,12 +14,7 @@ final class RevealBlurOverlay: UIView {
         translatesAutoresizingMaskIntoConstraints = false
         isUserInteractionEnabled = false
         addSubview(effectView)
-        NSLayoutConstraint.activate([
-            effectView.topAnchor.constraint(equalTo: topAnchor),
-            effectView.leadingAnchor.constraint(equalTo: leadingAnchor),
-            effectView.trailingAnchor.constraint(equalTo: trailingAnchor),
-            effectView.bottomAnchor.constraint(equalTo: bottomAnchor)
-        ])
+        effectView.pinToSuperview(of: self)
         effectView.alpha = 0
     }
 
@@ -35,12 +30,7 @@ final class RevealBlurOverlay: UIView {
         if superview === parent { return }
         if superview != nil { removeFromSuperview() }
         parent.addSubview(self)
-        NSLayoutConstraint.activate([
-            topAnchor.constraint(equalTo: parent.topAnchor),
-            leadingAnchor.constraint(equalTo: parent.leadingAnchor),
-            trailingAnchor.constraint(equalTo: parent.trailingAnchor),
-            bottomAnchor.constraint(equalTo: parent.bottomAnchor)
-        ])
+        pinToSuperview(of: parent)
     }
 
     func detach() { removeFromSuperview() }

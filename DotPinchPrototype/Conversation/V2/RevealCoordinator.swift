@@ -3,11 +3,23 @@ import UIKit
 @MainActor
 final class RevealCoordinator {
 
-    private(set) var activeChatVC: ChatViewController?
-    private var revealBlurOverlay: RevealBlurOverlay?
+    private enum RevealState {
+        case idle
+        case active(chat: ChatViewController, blur: RevealBlurOverlay)
+    }
+
+    private var revealState: RevealState = .idle
     private var revealAnimators: [UIViewPropertyAnimator] = []
 
-    var isPresenting: Bool { activeChatVC != nil }
+    var activeChatVC: ChatViewController? {
+        if case .active(let chat, _) = revealState { return chat }
+        return nil
+    }
+
+    var isPresenting: Bool {
+        if case .active = revealState { return true }
+        return false
+    }
 
     private weak var parent: UIViewController?
     private weak var canvas: UIView?
@@ -18,7 +30,7 @@ final class RevealCoordinator {
     }
 
     func present(conversation: Conversation, completion: (() -> Void)? = nil) {
-        guard activeChatVC == nil,
+        guard case .idle = revealState,
               let parent, let parentView = parent.view, let canvas else {
             completion?()
             return
@@ -26,6 +38,7 @@ final class RevealCoordinator {
 
         let chatVC = installChatViewController(in: parent, parentView: parentView, conversation: conversation)
         let blur = installRevealBlur(in: parentView)
+        revealState = .active(chat: chatVC, blur: blur)
         runRevealChoreography(chatVC: chatVC, canvas: canvas, blur: blur, completion: completion)
     }
 
@@ -36,23 +49,16 @@ final class RevealCoordinator {
         chatVC.view.alpha = 0
         chatVC.view.isUserInteractionEnabled = false
         parentView.addSubview(chatVC.view)
-        NSLayoutConstraint.activate([
-            chatVC.view.topAnchor.constraint(equalTo: parentView.topAnchor),
-            chatVC.view.leadingAnchor.constraint(equalTo: parentView.leadingAnchor),
-            chatVC.view.trailingAnchor.constraint(equalTo: parentView.trailingAnchor),
-            chatVC.view.bottomAnchor.constraint(equalTo: parentView.bottomAnchor)
-        ])
+        chatVC.view.pinToSuperview(of: parentView)
         chatVC.didMove(toParent: parent)
         chatVC.configure(with: conversation)
         chatVC.view.layoutIfNeeded()
-        self.activeChatVC = chatVC
         return chatVC
     }
 
     private func installRevealBlur(in parentView: UIView) -> RevealBlurOverlay {
         let blur = RevealBlurOverlay(frame: .zero)
         blur.attach(to: parentView)
-        self.revealBlurOverlay = blur
         return blur
     }
 
@@ -88,7 +94,6 @@ final class RevealCoordinator {
             guard let self else { return }
             if position == .end {
                 blur.detach()
-                if self.revealBlurOverlay === blur { self.revealBlurOverlay = nil }
                 completion?()
             }
             self.revealAnimators.removeAll { $0 === blurFadeIn || $0 === crossFade || $0 === blurFadeOut }
@@ -99,7 +104,7 @@ final class RevealCoordinator {
     }
 
     func dismiss(completion: (() -> Void)? = nil) {
-        guard let chatVC = activeChatVC, let canvas else {
+        guard case .active(let chatVC, let blur) = revealState, let canvas else {
             completion?()
             return
         }
@@ -117,9 +122,8 @@ final class RevealCoordinator {
             if position == .end {
                 chatVC.view.removeFromSuperview()
                 chatVC.removeFromParent()
-                self.activeChatVC = nil
-                self.revealBlurOverlay?.detach()
-                self.revealBlurOverlay = nil
+                blur.detach()
+                self.revealState = .idle
                 completion?()
             }
             self.revealAnimators.removeAll { $0 === dismissAnimator }

@@ -1,6 +1,7 @@
+// Design tokens — page chromatics, text colors, typography, shape, symbol affordances.
+
 import UIKit
 
-// Design tokens — page chromatics, text colors, typography, shape, symbol affordances.
 enum Theme {
 
     // MARK: - Page chromatics
@@ -22,7 +23,7 @@ enum Theme {
         static let fill = UIColor(red: 246/255, green: 239/255, blue: 239/255, alpha: 1)
     }
 
-    // MARK: - Text colours
+    // MARK: - Text colors
 
     enum Text {
         static let primary   = UIColor(white: 0.10, alpha: 1)

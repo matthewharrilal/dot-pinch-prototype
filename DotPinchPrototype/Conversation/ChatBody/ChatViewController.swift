@@ -5,6 +5,8 @@ import UIKit
 @MainActor
 final class ChatViewController: UIViewController {
 
+    // MARK: - Subviews
+
     private let headerLabel = UILabel()
     private let scrollView = UIScrollView()
     private let bubbleStack = UIStackView()
@@ -12,6 +14,8 @@ final class ChatViewController: UIViewController {
     private let composerTextField = UITextField()
 
     private var conversation: Conversation?
+
+    // MARK: - Lifecycle
 
     override func loadView() {
         view = UIView()
@@ -26,9 +30,11 @@ final class ChatViewController: UIViewController {
         activateConstraints()
     }
 
+    // MARK: - Configuration
+
     func configure(with conversation: Conversation) {
         self.conversation = conversation
-        headerLabel.text = ChatViewController.headerText(for: conversation)
+        headerLabel.text = conversation.dayMarker()
         rebuildBubbles(from: conversation.messages)
         view.layoutIfNeeded()
         DispatchQueue.main.async { [weak self] in
@@ -36,13 +42,7 @@ final class ChatViewController: UIViewController {
         }
     }
 
-    private static func headerText(for conversation: Conversation) -> String {
-        let calendar = Calendar.current
-        let date = conversation.createdAt
-        if calendar.isDateInToday(date) { return "Today" }
-        if calendar.isDateInYesterday(date) { return "Yesterday" }
-        return conversation.displayDate
-    }
+    // MARK: - Subview install
 
     private func installHeader() {
         headerLabel.font = Theme.Typography.destinationBody.withSize(28)
@@ -83,6 +83,8 @@ final class ChatViewController: UIViewController {
         composerContainer.addSubview(composerTextField)
     }
 
+    // MARK: - Layout
+
     private func activateConstraints() {
         NSLayoutConstraint.activate([
             headerLabel.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor, constant: 24),
@@ -112,6 +114,8 @@ final class ChatViewController: UIViewController {
         ])
     }
 
+    // MARK: - Bubble rendering
+
     private func rebuildBubbles(from messages: [Message]) {
         for bubble in bubbleStack.arrangedSubviews {
             bubbleStack.removeArrangedSubview(bubble)
@@ -122,13 +126,11 @@ final class ChatViewController: UIViewController {
         }
     }
 
+    // MARK: - Scroll
+
     private func scrollToBottom(animated: Bool) {
-        layoutIfNeeded()
+        view.layoutIfNeeded()
         let bottomY = max(0, scrollView.contentSize.height - scrollView.bounds.height)
         scrollView.setContentOffset(CGPoint(x: 0, y: bottomY), animated: animated)
-    }
-
-    private func layoutIfNeeded() {
-        view.layoutIfNeeded()
     }
 }

@@ -4,15 +4,17 @@
 
 import Foundation
 import CoreGraphics
-import QuartzCore
 
 public protocol VelocityProviding {
     static var zero: Self { get }
+    var isFinite: Bool { get }
 }
 
 public protocol SpringInterpolatable: Equatable {
     associatedtype ValueType: SpringInterpolatable where ValueType.ValueType == ValueType
     associatedtype VelocityType: VelocityProviding
+
+    var isFinite: Bool { get }
 
     /// Integrate one timestep of spring physics. Returns (newValue, newVelocity).
     static func updateValue(

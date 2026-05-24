@@ -58,26 +58,26 @@ final class CellLayoutTests: XCTestCase {
     /// 5 cells × 200pt + 4 gaps × 24pt = 1000 + 96 = 1096pt.
     func testPageHeightWithFiveCells() {
         let (canvas, ds) = makeCanvas(count: 5, height: 200)
-        XCTAssertEqual(canvas.pageHeight(), 1096)
+        XCTAssertEqual(canvas.pageHeight, 1096)
         _ = ds  // keep ds alive: dataSource is weak
     }
 
     func testPageHeightWithOneCell() {
         let (canvas, ds) = makeCanvas(count: 1, height: 200)
-        XCTAssertEqual(canvas.pageHeight(), 200, "single cell: no spacing")
+        XCTAssertEqual(canvas.pageHeight, 200, "single cell: no spacing")
         _ = ds
     }
 
     func testPageHeightWithZeroCells() {
         let (canvas, ds) = makeCanvas(count: 0, height: 200)
-        XCTAssertEqual(canvas.pageHeight(), 0)
+        XCTAssertEqual(canvas.pageHeight, 0)
         _ = ds
     }
 
     func testPageHeightNoTrailingSpacing() {
         // 3 × 200 + 2 × 24 = 648. NOT 3 × (200+24) = 672.
         let (canvas, ds) = makeCanvas(count: 3, height: 200)
-        XCTAssertEqual(canvas.pageHeight(), 648)
+        XCTAssertEqual(canvas.pageHeight, 648)
         _ = ds
     }
 
@@ -193,14 +193,14 @@ final class CellLayoutTests: XCTestCase {
         canvas.dataSource = ds1
         canvas.reloadData()
         _retainedDataSources.append(ds1)
-        XCTAssertEqual(canvas.pageHeight(), 1096)
+        XCTAssertEqual(canvas.pageHeight, 1096)
 
         // Swap to a 3-cell × 300pt DS: pageHeight = 3 × 300 + 2 × 24 = 948.
         let ds2 = UniformDS(count: 3, height: 300)
         canvas.dataSource = ds2
         canvas.reloadData()
         _retainedDataSources.append(ds2)
-        XCTAssertEqual(canvas.pageHeight(), 948, "cache must invalidate on reloadData")
+        XCTAssertEqual(canvas.pageHeight, 948, "cache must invalidate on reloadData")
         XCTAssertEqual(canvas.pageFrameForCell(at: 1).origin.y, 324, "300 + 24")
     }
 }

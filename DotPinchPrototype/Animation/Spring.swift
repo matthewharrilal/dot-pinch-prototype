@@ -6,13 +6,13 @@ import CoreGraphics
 public struct Spring: Equatable {
 
     /// Damping ratio: 1.0 = critically damped, <1.0 = underdamped, >1.0 = overdamped.
-    public var dampingRatio: CGFloat
+    public let dampingRatio: CGFloat
 
     /// Frequency response — settle time (sec) from a unit displacement at rest.
-    public var response: CGFloat
+    public let response: CGFloat
 
     /// Mass. Kept at 1.0; tune feel via dampingRatio + response.
-    public var mass: CGFloat = 1.0
+    public let mass: CGFloat
 
     public init(dampingRatio: CGFloat, response: CGFloat, mass: CGFloat = 1.0) {
         precondition(dampingRatio >= 0, "Spring: dampingRatio must be >= 0 (got \(dampingRatio))")

@@ -7,7 +7,7 @@
 import UIKit
 import QuartzCore
 
-final class TimelineCanvas: UIView, UIGestureRecognizerDelegate {
+final class TimelineCanvas: UIView {
 
     // MARK: - Page layout constants
 
@@ -77,7 +77,7 @@ final class TimelineCanvas: UIView, UIGestureRecognizerDelegate {
 
     /// Extension animator. Shares Spring params with `cameraAnimator` so the
     /// two springs share natural frequency (coordination invariant).
-    private(set) var extensionAnimator: SpringAnimator<CGFloat>!
+    let extensionAnimator: SpringAnimator<CGFloat>
 
     private(set) lazy var morphChoreographer: MorphChoreographer = MorphChoreographer(
         canvas: self,
@@ -130,19 +130,19 @@ final class TimelineCanvas: UIView, UIGestureRecognizerDelegate {
          frame: CGRect = .zero) {
         self.animationController = controller
         self.physicsTuning = tuning
+        self.extensionAnimator = SpringAnimator<CGFloat>(
+            controller: controller,
+            spring: Spring(
+                dampingRatio: tuning.springDamping,
+                response: tuning.springResponse
+            )
+        )
         super.init(frame: frame)
         installViewHierarchy()
         installPageGradient()
         installPanRecognizer()
         installPinchRecognizer()
         cameraAnimator = CameraAnimator(canvas: self, controller: animationController, tuning: tuning)
-        extensionAnimator = SpringAnimator<CGFloat>(
-            controller: animationController,
-            spring: Spring(
-                dampingRatio: tuning.springDamping,
-                response: tuning.springResponse
-            )
-        )
         extensionAnimator.valueChanged = { [weak self] _ in
             self?.applyExtensionTick()
         }
@@ -184,11 +184,8 @@ final class TimelineCanvas: UIView, UIGestureRecognizerDelegate {
     /// pageGradientLayer. ALWAYS-visible (opacity=1) kills the
     /// cell-on-gradient clash at rest states.
     private func installEdgeMasks() {
-        let sRGB = CGColorSpace(name: CGColorSpace.sRGB) ?? CGColorSpaceCreateDeviceRGB()
-        let topColor = Theme.Page.top.cgColor.converted(
-            to: sRGB, intent: .defaultIntent, options: nil) ?? Theme.Page.top.cgColor
-        let bottomColor = Theme.Page.bottom.cgColor.converted(
-            to: sRGB, intent: .defaultIntent, options: nil) ?? Theme.Page.bottom.cgColor
+        let topColor = Theme.Page.top.sRGBLockedCGColor
+        let bottomColor = Theme.Page.bottom.sRGBLockedCGColor
         let clearColor = UIColor.clear.cgColor
 
         topRevealMask.colors = [topColor, clearColor]
@@ -209,15 +206,34 @@ final class TimelineCanvas: UIView, UIGestureRecognizerDelegate {
 
     static let edgeMaskHeight: CGFloat = 80
 
+    /// Shared CABasicAnimation factory. Defaults match the morph chrome's
+    /// fillMode/removed contract (forwards, not removed on completion).
+    private static func makeCAAnimation(keyPath: String,
+                                         from: Any?, to: Any?,
+                                         duration: CFTimeInterval,
+                                         beginTime: CFTimeInterval = 0,
+                                         timing: CAMediaTimingFunction,
+                                         additive: Bool = false) -> CABasicAnimation {
+        let a = CABasicAnimation(keyPath: keyPath)
+        a.fromValue = from
+        a.toValue = to
+        a.duration = duration
+        a.beginTime = beginTime
+        a.timingFunction = timing
+        a.isAdditive = additive
+        a.fillMode = .forwards
+        a.isRemovedOnCompletion = false
+        return a
+    }
+
     /// Three-stop sRGB-locked gradient. The sRGB CGColorSpace lock is
     /// load-bearing: on wide-gamut sims (Display-P3), unlocked CGColors
     /// desaturate warm pinks. CAGradientLayer interpolates in sRGB regardless
     /// of the device's native display gamut.
     private func installPageGradient() {
-        let sRGB = CGColorSpace(name: CGColorSpace.sRGB) ?? CGColorSpaceCreateDeviceRGB()
-        let topColor = Theme.Page.top.cgColor.converted(to: sRGB, intent: .defaultIntent, options: nil) ?? Theme.Page.top.cgColor
-        let midColor = Theme.Page.surface.cgColor.converted(to: sRGB, intent: .defaultIntent, options: nil) ?? Theme.Page.surface.cgColor
-        let bottomColor = Theme.Page.bottom.cgColor.converted(to: sRGB, intent: .defaultIntent, options: nil) ?? Theme.Page.bottom.cgColor
+        let topColor = Theme.Page.top.sRGBLockedCGColor
+        let midColor = Theme.Page.surface.sRGBLockedCGColor
+        let bottomColor = Theme.Page.bottom.sRGBLockedCGColor
         pageGradientLayer.colors = [topColor, midColor, bottomColor]
         pageGradientLayer.locations = [0, 0.5, 1]
         pageGradientLayer.startPoint = CGPoint(x: 0.5, y: 0.0)
@@ -275,7 +291,7 @@ final class TimelineCanvas: UIView, UIGestureRecognizerDelegate {
     /// earlier in pinch-out, top mask peaks later. At both rest states the
     /// alphas are 0 — masks are visible only during mid-pinch.
     private func updateEdgeMaskAlphas() {
-        let p = currentCanvasProgress()
+        let p = currentCanvasProgress
 
         let bottomUp = smoothstep(0.30, 0.70, p)
         let bottomDown = smoothstep(0.70, 1.00, p)
@@ -291,7 +307,7 @@ final class TimelineCanvas: UIView, UIGestureRecognizerDelegate {
 
     /// Canvas-level progress for chrome / edge-mask curves. At
     /// no-active-cell-rest → 0; at chat-rest → 1.
-    func currentCanvasProgress() -> CGFloat {
+    var currentCanvasProgress: CGFloat {
         guard let idx = activeCellIndex, let activeCell = instantiatedCells[idx] else { return 0 }
         let naturalH = activeCell.naturalHeight
         guard naturalH > 0, bounds.height > 0 else { return 0 }
@@ -484,9 +500,8 @@ final class TimelineCanvas: UIView, UIGestureRecognizerDelegate {
     }
 
     /// Sum of cell heights + interior gaps. No trailing spacing past the last cell.
-    func pageHeight() -> CGFloat {
-        let ys = accumulatedYs()
-        return ys.last ?? 0
+    var pageHeight: CGFloat {
+        accumulatedYs().last ?? 0
     }
 
     /// Page-coord frame of cell at `index`. Origin x = 0 (single-column).
@@ -683,7 +698,7 @@ final class TimelineCanvas: UIView, UIGestureRecognizerDelegate {
     private func restoreNaturalSiblingOrder() {
         let sortedCells = contentHost.subviews
             .compactMap { $0 as? CellView }
-            .sorted { $0.index < $1.index }
+            .sorted { ($0.index ?? .max) < ($1.index ?? .max) }
         for cell in sortedCells {
             contentHost.bringSubviewToFront(cell)
         }
@@ -697,7 +712,7 @@ final class TimelineCanvas: UIView, UIGestureRecognizerDelegate {
     private func pushCameraToVisibleCells() {
         let viewport = bounds
         let cells = Array(instantiatedCells.values)
-        let progress = currentCanvasProgress()
+        let progress = currentCanvasProgress
         // Carrier-alpha invariant: applies only to ACTIVE cell; neighbors fade
         // during mid-progress.
         let neighborAlpha = 1 - smoothstep(0.30, 0.70, progress)
@@ -923,7 +938,7 @@ final class TimelineCanvas: UIView, UIGestureRecognizerDelegate {
     /// `[viewport.height/2, pageH - viewport.height/2]`.
     private func clampedWithRubberband(_ rawT: CGFloat) -> CGFloat {
         let viewportH = bounds.height
-        let pageH = pageHeight()
+        let pageH = pageHeight
         let minT = viewportH / 2
         let maxT = max(minT, pageH - viewportH / 2)
         return rubberband(
@@ -934,6 +949,42 @@ final class TimelineCanvas: UIView, UIGestureRecognizerDelegate {
         )
     }
 
+    /// Pan-end deceleration. Single-axis translation spring; valid range
+    /// matches `clampedWithRubberband`.
+    private func startSpringDeceleration(initialVelocityY: CGFloat) {
+        let viewportH = bounds.height
+        let pageH = pageHeight
+        let minT = viewportH / 2
+        let maxT = max(minT, pageH - viewportH / 2)
+
+        let projected = project(initialVelocity: initialVelocityY, decelerationRate: 0.998)
+        let rawTarget = camera.translation + projected
+        let clampedTarget = clamp(rawTarget, minT, maxT)
+
+        let targetCamera = Camera(translation: clampedTarget)
+        let velocity = CameraVelocity(translationVelocity: initialVelocityY)
+        cameraAnimator.animate(to: targetCamera, velocity: velocity)
+    }
+
+    // MARK: - Active-cell context
+
+    private struct ActiveCellContext {
+        let activeIdx: Int
+        let activeCell: CellView
+        let heightConstraint: NSLayoutConstraint
+        let naturalH: CGFloat
+    }
+
+    private func activeCellContext() -> ActiveCellContext? {
+        guard let activeIdx = activeCellIndex,
+              let activeCell = instantiatedCells[activeIdx],
+              let heightC = activeCell.heightConstraint else { return nil }
+        let naturalH = activeCell.naturalHeight
+        guard naturalH > 0 else { return nil }
+        return ActiveCellContext(activeIdx: activeIdx, activeCell: activeCell,
+                                  heightConstraint: heightC, naturalH: naturalH)
+    }
+
     // MARK: - Engagement predicate
 
     private var isQuiet: Bool {
@@ -942,7 +993,7 @@ final class TimelineCanvas: UIView, UIGestureRecognizerDelegate {
             && extensionAnimator.state != .running
     }
 
-    // MARK: - Pinch gesture
+    // MARK: - Pinch gesture (recognizer plumbing)
 
     @objc private func handlePinch(_ recognizer: UIPinchGestureRecognizer) {
         switch recognizer.state {
@@ -1004,11 +1055,9 @@ final class TimelineCanvas: UIView, UIGestureRecognizerDelegate {
     /// before subsequent reads (hit-test timing).
     internal func handlePinchChanged(_ recognizer: UIPinchGestureRecognizer) {
         guard pinchState.initialScale > 1e-6 else { return }
-        guard let activeIdx = activeCellIndex,
-              let activeCell = instantiatedCells[activeIdx],
-              let heightC = activeCell.heightConstraint else { return }
-        let naturalH = activeCell.naturalHeight
-        guard naturalH > 0, bounds.height > 0 else { return }
+        guard let ctx = activeCellContext(), bounds.height > 0 else { return }
+        let heightC = ctx.heightConstraint
+        let naturalH = ctx.naturalH
 
         let scaleFactor = recognizer.scale / pinchState.initialScale
         let rawNewExtension = pinchState.initialExtension * scaleFactor
@@ -1048,11 +1097,10 @@ final class TimelineCanvas: UIView, UIGestureRecognizerDelegate {
     internal func handlePinchEnded(_ recognizer: UIPinchGestureRecognizer) {
         defer { pinchState.reset() }
 
-        guard let activeIdx = activeCellIndex,
-              let activeCell = instantiatedCells[activeIdx],
-              let heightC = activeCell.heightConstraint else { return }
-        let naturalH = activeCell.naturalHeight
-        guard naturalH > 0, bounds.height > 0 else { return }
+        guard let ctx = activeCellContext(), bounds.height > 0 else { return }
+        let activeIdx = ctx.activeIdx
+        let heightC = ctx.heightConstraint
+        let naturalH = ctx.naturalH
 
         let chatRestFactor = bounds.height / naturalH
         let currentFactor = heightC.constant / naturalH
@@ -1145,6 +1193,8 @@ final class TimelineCanvas: UIView, UIGestureRecognizerDelegate {
         }
     }
 
+    // MARK: - Spring profiles
+
     fileprivate func springProfile(for commit: GestureCommit) -> Spring {
         Spring(dampingRatio: commit.dampingRatio(from: physicsTuning),
                response: physicsTuning.springResponse)
@@ -1175,6 +1225,8 @@ final class TimelineCanvas: UIView, UIGestureRecognizerDelegate {
     func animateCameraToCellRest() {
         springToCellRest(carriedExtensionVelocity: 0)
     }
+
+    // MARK: - Chat-rest CABasicAnimation chrome
 
     /// Public entry — tap-to-chat. Guarded against re-entry (in-flight morph)
     /// and tap-during-active-cell. The internal Path called by pinch .ended
@@ -1214,51 +1266,33 @@ final class TimelineCanvas: UIView, UIGestureRecognizerDelegate {
         let finalScale = chatRestFactor
         let zoomContribution = finalScale - 1.0 - windupContribution
 
-        let windupScale = CABasicAnimation(keyPath: "transform.scale")
-        windupScale.fromValue = 0
-        windupScale.toValue = windupContribution
-        windupScale.duration = windupDuration
-        windupScale.beginTime = now
-        windupScale.timingFunction = CAMediaTimingFunction(name: .easeOut)
-        windupScale.fillMode = .forwards
-        windupScale.isRemovedOnCompletion = false
-        windupScale.isAdditive = true
-
-        let zoomScale = CABasicAnimation(keyPath: "transform.scale")
-        zoomScale.fromValue = 0
-        zoomScale.toValue = zoomContribution
-        zoomScale.duration = totalMorphDuration
-        zoomScale.beginTime = now
         let zoomLandingCP = MorphCurves.zoomLanding
-        zoomScale.timingFunction = CAMediaTimingFunction(controlPoints: zoomLandingCP.0, zoomLandingCP.1, zoomLandingCP.2, zoomLandingCP.3)
-        zoomScale.fillMode = .forwards
-        zoomScale.isRemovedOnCompletion = false
-        zoomScale.isAdditive = true
-
-        let translate = CABasicAnimation(keyPath: "transform.translation.y")
-        translate.fromValue = 0
-        translate.toValue = MorphTiming.translateYTarget
-        translate.duration = totalMorphDuration
-        translate.beginTime = now
+        let zoomLandingTiming = CAMediaTimingFunction(controlPoints: zoomLandingCP.0, zoomLandingCP.1, zoomLandingCP.2, zoomLandingCP.3)
         let translateLandingCP = MorphCurves.translateLanding
-        translate.timingFunction = CAMediaTimingFunction(controlPoints: translateLandingCP.0, translateLandingCP.1, translateLandingCP.2, translateLandingCP.3)
-        translate.fillMode = .forwards
-        translate.isRemovedOnCompletion = false
-        translate.isAdditive = true
+        let translateLandingTiming = CAMediaTimingFunction(controlPoints: translateLandingCP.0, translateLandingCP.1, translateLandingCP.2, translateLandingCP.3)
+
+        let windupScale = Self.makeCAAnimation(
+            keyPath: "transform.scale", from: 0, to: windupContribution,
+            duration: windupDuration, beginTime: now,
+            timing: CAMediaTimingFunction(name: .easeOut), additive: true)
+
+        let zoomScale = Self.makeCAAnimation(
+            keyPath: "transform.scale", from: 0, to: zoomContribution,
+            duration: totalMorphDuration, beginTime: now,
+            timing: zoomLandingTiming, additive: true)
+
+        let translate = Self.makeCAAnimation(
+            keyPath: "transform.translation.y", from: 0, to: MorphTiming.translateYTarget,
+            duration: totalMorphDuration, beginTime: now,
+            timing: translateLandingTiming, additive: true)
 
         let cellOffsetFromViewportCenter = activeCell.frame.midY - camera.translation
         let centeringTranslate = -cellOffsetFromViewportCenter * finalScale
 
-        let centering = CABasicAnimation(keyPath: "transform.translation.y")
-        centering.fromValue = 0
-        centering.toValue = centeringTranslate
-        centering.duration = totalMorphDuration
-        centering.beginTime = now
-        let centeringCP = MorphCurves.zoomLanding
-        centering.timingFunction = CAMediaTimingFunction(controlPoints: centeringCP.0, centeringCP.1, centeringCP.2, centeringCP.3)
-        centering.fillMode = .forwards
-        centering.isRemovedOnCompletion = false
-        centering.isAdditive = true
+        let centering = Self.makeCAAnimation(
+            keyPath: "transform.translation.y", from: 0, to: centeringTranslate,
+            duration: totalMorphDuration, beginTime: now,
+            timing: zoomLandingTiming, additive: true)
 
         contentHost.layer.add(windupScale, forKey: MorphAnimationKey.windupScale.rawValue)
         contentHost.layer.add(zoomScale, forKey: MorphAnimationKey.zoomScale.rawValue)
@@ -1420,6 +1454,8 @@ final class TimelineCanvas: UIView, UIGestureRecognizerDelegate {
         onCameraChanged?(camera, bounds)
     }
 
+    // MARK: - Cell-rest spring coordination
+
     /// Internal cell-rest path. activeCellIndex clears only when BOTH springs
     /// settle AND heightConstraint reaches naturalHeight. The
     /// `tryClearActiveCellAtRest` coordination makes the clear robust under
@@ -1482,24 +1518,11 @@ final class TimelineCanvas: UIView, UIGestureRecognizerDelegate {
         }
     }
 
-    /// Pan-end deceleration. Single-axis translation spring; valid range
-    /// matches `clampedWithRubberband`.
-    private func startSpringDeceleration(initialVelocityY: CGFloat) {
-        let viewportH = bounds.height
-        let pageH = pageHeight()
-        let minT = viewportH / 2
-        let maxT = max(minT, pageH - viewportH / 2)
+}
 
-        let projected = project(initialVelocity: initialVelocityY, decelerationRate: 0.998)
-        let rawTarget = camera.translation + projected
-        let clampedTarget = clamp(rawTarget, minT, maxT)
+// MARK: - UIGestureRecognizerDelegate
 
-        let targetCamera = Camera(translation: clampedTarget)
-        let velocity = CameraVelocity(translationVelocity: initialVelocityY)
-        cameraAnimator.animate(to: targetCamera, velocity: velocity)
-    }
-
-    // MARK: - UIGestureRecognizerDelegate
+extension TimelineCanvas: UIGestureRecognizerDelegate {
 
     /// Pan ↔ pinch only. Returning `true` for all pairs would let future tap
     /// or accessibility recognizers fire simultaneously with pan in subtle

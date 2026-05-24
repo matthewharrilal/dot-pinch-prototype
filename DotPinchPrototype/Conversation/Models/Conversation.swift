@@ -8,7 +8,7 @@ import Observation
 
 @MainActor
 @Observable
-final class Conversation: Identifiable, Equatable, Hashable {
+final class Conversation: Identifiable {
 
     // MARK: - Identity
 
@@ -45,12 +45,26 @@ final class Conversation: Identifiable, Equatable, Hashable {
         self.displayDate = displayDate
     }
 
-    // MARK: - Conformances
+    /// "Today" / "Yesterday" / displayDate — shared by cell label + chat header.
+    func dayMarker(now: Date = .init()) -> String {
+        let cal = Calendar.current
+        if cal.isDateInToday(createdAt) { return "Today" }
+        if cal.isDateInYesterday(createdAt) { return "Yesterday" }
+        return displayDate
+    }
+}
 
+// MARK: - Equatable
+
+extension Conversation: Equatable {
     nonisolated static func == (lhs: Conversation, rhs: Conversation) -> Bool {
         lhs.id == rhs.id
     }
+}
 
+// MARK: - Hashable
+
+extension Conversation: Hashable {
     nonisolated func hash(into hasher: inout Hasher) {
         hasher.combine(id)
     }

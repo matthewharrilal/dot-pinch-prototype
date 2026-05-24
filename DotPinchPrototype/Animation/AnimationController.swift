@@ -5,27 +5,15 @@
 
 import Foundation
 import QuartzCore
-import UIKit
-
-/// Weak-proxy target for the CADisplayLink. Breaks the runloop → displayLink
-/// → target retain cycle so `AnimationController.deinit` actually fires.
-@MainActor
-private final class DisplayLinkProxy {
-    weak var controller: AnimationController?
-
-    init(controller: AnimationController) {
-        self.controller = controller
-    }
-
-    @objc func displayLinkFired(_ link: CADisplayLink) {
-        controller?._displayLinkFired(link)
-    }
-}
 
 @MainActor
 public final class AnimationController {
 
     private var animations: [UUID: AnimatorProviding] = [:]
+    /// Registration order. Callers depending on cross-animator state
+    /// coordination (dual-spring AND-gate in tryClearActiveCellAtRest) must
+    /// register the animator that should tick FIRST first.
+    private var insertionOrder: [UUID] = []
 
     private var displayLink: CADisplayLink?
     private var proxy: DisplayLinkProxy?
@@ -46,20 +34,23 @@ public final class AnimationController {
         displayLink = nil
         proxy = nil
         animations.removeAll()
+        insertionOrder.removeAll()
     }
 
-    fileprivate func _displayLinkFired(_ link: CADisplayLink) {
+    fileprivate func displayLinkFired(_ link: CADisplayLink) {
         let dt = link.targetTimestamp - link.timestamp
 
         CATransaction.withSuppressedActions {
-            for animator in animations.values {
+            for id in insertionOrder {
+                guard let animator = animations[id] else { continue }
                 if animator.state == .ended {
                     animator.reset()
-                    animations.removeValue(forKey: animator.id)
+                    animations.removeValue(forKey: id)
                 } else {
                     animator.updateAnimation(dt: dt)
                 }
             }
+            insertionOrder.removeAll { animations[$0] == nil }
         }
 
         if animations.isEmpty {
@@ -71,6 +62,9 @@ public final class AnimationController {
     /// pauses when the animations dictionary empties.
     func runPropertyAnimation(_ animator: AnimatorProviding) {
         let wasEmpty = animations.isEmpty
+        if animations[animator.id] == nil {
+            insertionOrder.append(animator.id)
+        }
         animations[animator.id] = animator
 
         if wasEmpty {
@@ -82,5 +76,22 @@ public final class AnimationController {
         CATransaction.withSuppressedActions {
             animator.updateAnimation(dt: 0)
         }
+    }
+}
+
+// MARK: - Display-link weak-proxy
+
+/// Weak-proxy target for the CADisplayLink. Breaks the runloop → displayLink
+/// → target retain cycle so `AnimationController.deinit` actually fires.
+@MainActor
+private final class DisplayLinkProxy {
+    weak var controller: AnimationController?
+
+    init(controller: AnimationController) {
+        self.controller = controller
+    }
+
+    @objc func displayLinkFired(_ link: CADisplayLink) {
+        controller?.displayLinkFired(link)
     }
 }

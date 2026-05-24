@@ -12,27 +12,20 @@ final class ConversationStore {
 
     // MARK: - Storage
 
-    private(set) var conversations: [Conversation] = []
+    let conversations: [Conversation]
 
-    private var conversationsByID: [UUID: Conversation] = [:]
+    private let conversationsByID: [UUID: Conversation]
 
     // MARK: - Initialization
 
     init(initialConversations: [Conversation] = []) {
+        var byID: [UUID: Conversation] = [:]
         for conversation in initialConversations {
-            insert(conversation)
+            precondition(byID[conversation.id] == nil,
+                         "ConversationStore: duplicate id \(conversation.id)")
+            byID[conversation.id] = conversation
         }
-        sortByRecency()
-    }
-
-    // MARK: - Internal Helpers
-
-    private func insert(_ conversation: Conversation) {
-        conversationsByID[conversation.id] = conversation
-        conversations.append(conversation)
-    }
-
-    private func sortByRecency() {
-        conversations.sort { $0.lastUpdatedAt > $1.lastUpdatedAt }
+        self.conversationsByID = byID
+        self.conversations = initialConversations.sorted { $0.lastUpdatedAt > $1.lastUpdatedAt }
     }
 }

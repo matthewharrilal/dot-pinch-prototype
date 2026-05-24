@@ -6,26 +6,12 @@
 import Foundation
 import QuartzCore
 
-/// Type-erased animator handle so AnimationController can hold animators of varied T.
-@MainActor
-protocol AnimatorProviding: AnyObject {
-    var id: UUID { get }
-    var state: AnimatorState { get }
-    func updateAnimation(dt: TimeInterval)
-    func reset()
-}
-
-public enum AnimatorState: Equatable {
-    case inactive
-    case running
-    case ended
-}
-
 @MainActor
 public final class SpringAnimator<T: SpringInterpolatable>: AnimatorProviding where T.ValueType == T {
 
     // MARK: - Events
 
+    @frozen
     public enum Event {
         case finished(at: T.ValueType)
         case retargeted(from: T.ValueType, to: T.ValueType)
@@ -35,13 +21,7 @@ public final class SpringAnimator<T: SpringInterpolatable>: AnimatorProviding wh
 
     public let id = UUID()
 
-    public private(set) var state: AnimatorState = .inactive {
-        didSet {
-            if oldValue == .inactive, state == .running {
-                startTime = CACurrentMediaTime()
-            }
-        }
-    }
+    public private(set) var state: AnimatorState = .inactive
 
     public var spring: Spring
 
@@ -76,7 +56,7 @@ public final class SpringAnimator<T: SpringInterpolatable>: AnimatorProviding wh
 
     /// Identity accessor for the canary test that asserts camera + extension
     /// animators share the same AnimationController instance.
-    internal var animationControllerIdentity: AnyObject? { controller }
+    internal var animationControllerIdentityForTesting: AnyObject? { controller }
 
     // MARK: - Init
 
@@ -134,7 +114,10 @@ public final class SpringAnimator<T: SpringInterpolatable>: AnimatorProviding wh
             return
         }
 
-        state = .running
+        if state != .running {
+            state = .running
+            if startTime == nil { startTime = CACurrentMediaTime() }
+        }
 
         guard let runningTime else { return }
 
@@ -148,6 +131,15 @@ public final class SpringAnimator<T: SpringInterpolatable>: AnimatorProviding wh
 
         self.value = newValue
         self.velocity = newVelocity
+
+        if !newValue.isFinite || !newVelocity.isFinite {
+            self.value = target
+            self.velocity = T.VelocityType.zero
+            valueChanged?(target)
+            completion?(.finished(at: target))
+            state = .ended
+            return
+        }
 
         let finished = runningTime >= spring.settlingDuration
         if finished {

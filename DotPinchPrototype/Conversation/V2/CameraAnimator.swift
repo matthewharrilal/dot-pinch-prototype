@@ -74,8 +74,8 @@ final class CameraAnimator {
 
     /// Exposed for a canary test asserting camera + extension animators share
     /// the same AnimationController instance.
-    internal var animationControllerIdentity: AnyObject? {
-        translationAnimator.animationControllerIdentity
+    internal var animationControllerIdentityForTesting: AnyObject? {
+        translationAnimator.animationControllerIdentityForTesting
     }
 
     /// Current velocity of the inner translation animator (for tests).

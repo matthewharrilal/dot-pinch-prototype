@@ -10,29 +10,83 @@ final class CellView: UIView {
 
     // MARK: - Public API
 
-    /// Data index this cell currently represents. -1 sentinel before configuration.
-    var index: Int = -1
+    /// Data index this cell currently represents. nil before configuration.
+    var index: Int?
 
     /// Conversation this cell is currently bound to. Used as a pool key for
     /// keyed reattachment across round-trips.
     private(set) var activeConversationID: UUID?
 
-    // MARK: - Content subviews
+    // MARK: - Content subviews (closure-init at class-top)
 
-    private(set) var dateLabel: UILabel!
-    private(set) var topicSummaryLabel: UILabel!
-    private(set) var todayLabel: UILabel!
-    private(set) var labelStack: UIStackView!
+    private(set) var dateLabel: UILabel = {
+        let l = UILabel()
+        l.font = Theme.Typography.destinationDate
+        l.textColor = Theme.Text.tertiary
+        l.numberOfLines = 1
+        l.lineBreakMode = .byTruncatingTail
+        l.translatesAutoresizingMaskIntoConstraints = false
+        return l
+    }()
+
+    private(set) var topicSummaryLabel: UILabel = {
+        let l = UILabel()
+        l.font = Theme.Typography.destinationBody
+        l.textColor = Theme.Text.serifBody
+        l.numberOfLines = 3
+        l.lineBreakMode = .byTruncatingTail
+        l.translatesAutoresizingMaskIntoConstraints = false
+        return l
+    }()
+
+    private(set) var todayLabel: UILabel = {
+        let l = UILabel()
+        l.font = Theme.Typography.destinationDate
+        l.textColor = Theme.Text.tertiary
+        l.numberOfLines = 1
+        l.lineBreakMode = .byTruncatingTail
+        l.translatesAutoresizingMaskIntoConstraints = false
+        return l
+    }()
+
+    private(set) lazy var labelStack: UIStackView = {
+        let s = UIStackView(arrangedSubviews: [dateLabel, topicSummaryLabel, todayLabel])
+        s.axis = .vertical
+        s.alignment = .leading
+        s.spacing = 10
+        s.translatesAutoresizingMaskIntoConstraints = false
+        return s
+    }()
 
     /// Centered chat-rest title. Alpha 0 at cell-rest; crossfaded in by the
     /// morph animator as the visible day-marker at chat-rest.
-    private(set) var chatRestCenterLabel: UILabel!
+    private(set) var chatRestCenterLabel: UILabel = {
+        let l = UILabel()
+        l.font = Theme.Typography.destinationBody.withSize(30)
+        l.textColor = Theme.Text.primary
+        l.textAlignment = .center
+        l.numberOfLines = 1
+        l.alpha = 0
+        l.translatesAutoresizingMaskIntoConstraints = false
+        return l
+    }()
 
     weak var morphChoreographer: MorphChoreographer?
 
     var morphInProgress: Bool { morphChoreographer?.isRunning ?? false }
 
-    private(set) var pinchGlyph: UIImageView!
+    private(set) var pinchGlyph: UIImageView = {
+        let v = UIImageView()
+        v.translatesAutoresizingMaskIntoConstraints = false
+        let config = UIImage.SymbolConfiguration(
+            pointSize: Theme.Symbol.pinchAffordancePointSize,
+            weight: Theme.Symbol.pinchAffordanceWeight
+        )
+        v.image = UIImage(systemName: SymbolName.pinchExpandAffordance, withConfiguration: config)
+        v.tintColor = Theme.Text.glyph
+        v.isUserInteractionEnabled = false
+        return v
+    }()
 
     // MARK: - Cell-against-contentHost layout
 
@@ -70,7 +124,7 @@ final class CellView: UIView {
             accessibilityIdentifier = AccessibilityID.conversationSurface
         }
 
-        setupSubviews()
+        installSubviews()
     }
 
     @available(*, unavailable)
@@ -140,69 +194,15 @@ final class CellView: UIView {
         heightConstraint?.constant = naturalHeight
     }
 
-    // MARK: - Subview setup
+    // MARK: - Subview install
 
-    /// Build the cell-rest content hierarchy ONCE at init. Subviews are
-    /// NEVER re-added in `configure(with:)` — mid-gesture sublayer-count
-    /// changes are forbidden.
-    private func setupSubviews() {
+    private func installSubviews() {
         CATransaction.withSuppressedActions {
-            installLabelStack()
-            installPinchGlyph()
+            addSubview(labelStack)
+            addSubview(chatRestCenterLabel)
+            addSubview(pinchGlyph)
         }
         activateConstraints()
-    }
-
-    private func installLabelStack() {
-        dateLabel = UILabel()
-        dateLabel.font = Theme.Typography.destinationDate
-        dateLabel.textColor = Theme.Text.tertiary
-        dateLabel.numberOfLines = 1
-        dateLabel.lineBreakMode = .byTruncatingTail
-        dateLabel.translatesAutoresizingMaskIntoConstraints = false
-
-        topicSummaryLabel = UILabel()
-        topicSummaryLabel.font = Theme.Typography.destinationBody
-        topicSummaryLabel.textColor = Theme.Text.serifBody
-        topicSummaryLabel.numberOfLines = 3
-        topicSummaryLabel.lineBreakMode = .byTruncatingTail
-        topicSummaryLabel.translatesAutoresizingMaskIntoConstraints = false
-
-        todayLabel = UILabel()
-        todayLabel.font = Theme.Typography.destinationDate
-        todayLabel.textColor = Theme.Text.tertiary
-        todayLabel.numberOfLines = 1
-        todayLabel.lineBreakMode = .byTruncatingTail
-        todayLabel.translatesAutoresizingMaskIntoConstraints = false
-
-        labelStack = UIStackView(arrangedSubviews: [dateLabel, topicSummaryLabel, todayLabel])
-        labelStack.axis = .vertical
-        labelStack.alignment = .leading
-        labelStack.spacing = 10
-        labelStack.translatesAutoresizingMaskIntoConstraints = false
-        addSubview(labelStack)
-
-        chatRestCenterLabel = UILabel()
-        chatRestCenterLabel.font = Theme.Typography.destinationBody.withSize(30)
-        chatRestCenterLabel.textColor = Theme.Text.primary
-        chatRestCenterLabel.textAlignment = .center
-        chatRestCenterLabel.numberOfLines = 1
-        chatRestCenterLabel.alpha = 0
-        chatRestCenterLabel.translatesAutoresizingMaskIntoConstraints = false
-        addSubview(chatRestCenterLabel)
-    }
-
-    private func installPinchGlyph() {
-        pinchGlyph = UIImageView()
-        pinchGlyph.translatesAutoresizingMaskIntoConstraints = false
-        let config = UIImage.SymbolConfiguration(
-            pointSize: Theme.Symbol.pinchAffordancePointSize,
-            weight: Theme.Symbol.pinchAffordanceWeight
-        )
-        pinchGlyph.image = UIImage(systemName: SymbolName.pinchExpandAffordance, withConfiguration: config)
-        pinchGlyph.tintColor = Theme.Text.glyph
-        pinchGlyph.isUserInteractionEnabled = false
-        addSubview(pinchGlyph)
     }
 
     private func activateConstraints() {
@@ -229,16 +229,10 @@ final class CellView: UIView {
         activeConversationID = conversation.id
         dateLabel.text = conversation.displayDate
         topicSummaryLabel.text = conversation.curatedSummary
-        todayLabel.text = Self.todayLabelText(for: conversation)
-        chatRestCenterLabel.text = Self.todayLabelText(for: conversation) ?? conversation.displayDate
-    }
-
-    private static func todayLabelText(for conversation: Conversation) -> String? {
-        let calendar = Calendar.current
-        let date = conversation.createdAt
-        if calendar.isDateInToday(date) { return "Today" }
-        if calendar.isDateInYesterday(date) { return "Yesterday" }
-        return nil
+        let marker = conversation.dayMarker()
+        let isRelative = (marker == "Today" || marker == "Yesterday")
+        todayLabel.text = isRelative ? marker : nil
+        chatRestCenterLabel.text = marker
     }
 
     // MARK: - Camera-change seam

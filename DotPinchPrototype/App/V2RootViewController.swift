@@ -49,12 +49,7 @@ final class V2RootViewController: UIViewController {
         // gradient fills the screen; chat-rest cell's top corners hide
         // behind the status bar by design (§10.13 + §0.4). cornerRadius is
         // locked at 25pt and NOT animated.
-        NSLayoutConstraint.activate([
-            timelineCanvas.topAnchor.constraint(equalTo: view.topAnchor),
-            timelineCanvas.leadingAnchor.constraint(equalTo: view.leadingAnchor),
-            timelineCanvas.trailingAnchor.constraint(equalTo: view.trailingAnchor),
-            timelineCanvas.bottomAnchor.constraint(equalTo: view.bottomAnchor)
-        ])
+        timelineCanvas.pinToSuperview(of: view)
 
         timelineCanvas.dataSource = adapter
         timelineCanvas.reloadData()
@@ -82,10 +77,14 @@ final class V2RootViewController: UIViewController {
         NotificationCenter.default.removeObserver(self)
     }
 
+    // MARK: - Scene observers
+
     @objc private func handleSceneWillDeactivate() {
         timelineCanvas.cancelInFlightAnimations()
         revealCoordinator.cancelInFlight()
     }
+
+    // MARK: - Gesture handling
 
     @objc private func handleTap(_ recognizer: UITapGestureRecognizer) {
         let viewportPoint = recognizer.location(in: timelineCanvas)

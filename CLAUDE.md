@@ -242,7 +242,6 @@ Escalation is not failure. It is the discipline of not silently breaking the phe
 - **Architecture overview**: [`docs/architecture.md`](docs/architecture.md) — the 5-layer architecture.
 - **Animation substrate**: [`docs/animation-substrate.md`](docs/animation-substrate.md) — `AnimationController`, `SpringAnimator`, `CurveAnimator`.
 - **Keystones K1-K8**: [`docs/keystones.md`](docs/keystones.md) — the named invariants the substrate enforces.
-- **Megafile memo**: [`MEGAFILE-MEMO.md`](MEGAFILE-MEMO.md) — re-evaluation deadline for `TimelineCanvas` decomposition (2026-12-01).
 - **Cane-curve technical reference**: [`README.md` § Appendix](README.md#13-appendix--the-cane-curve-trajectory-detailed-technical-reference) — deepest worked example of the phenomenology in action.
 
 ---

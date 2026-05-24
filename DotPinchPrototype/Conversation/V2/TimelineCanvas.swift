@@ -376,6 +376,13 @@ final class TimelineCanvas: UIView, UIGestureRecognizerDelegate {
     /// take the LIFO/miss path (preserving state across a data-source reload
     /// would resurrect data that no longer makes sense).
     func reloadData() {
+        // Defensive: clear active-cell BEFORE pool-clear so the active cell
+        // routes through returnToPool (and thus resetMorphState) instead of
+        // being orphaned mid-engagement. Without this guard, reloadData mid-
+        // active-cell would leave the active cell's morph state un-reset.
+        if activeCellIndex != nil {
+            setActiveCellIndex(nil)
+        }
         invalidateLayout()
         for (_, cell) in instantiatedCells {
             returnToPool(cell)
@@ -643,8 +650,7 @@ final class TimelineCanvas: UIView, UIGestureRecognizerDelegate {
                 }
             } else {
                 let desiredID = dataSource?.canvas(self, conversationIDForCellAt: i)
-                let dequeue = dequeueCell(preferredConversationID: desiredID)
-                let cell = dequeue.cell
+                let (cell, preservedState) = dequeueCell(preferredConversationID: desiredID)
                 cell.index = i
                 // Set TAMIC=false BEFORE addSubview so UIKit doesn't synthesize
                 // autoresizing constraints that conflict with explicit ones.
@@ -661,7 +667,11 @@ final class TimelineCanvas: UIView, UIGestureRecognizerDelegate {
                 cell.onTap = { [weak self] index in
                     self?.handleCellTap(at: index)
                 }
-                dataSource?.canvas(self, configureCell: cell, at: i)
+                // State-preservation seam: skip configure on a keyed-pool hit so
+                // scroll offset / composer text survive the round-trip.
+                if !preservedState {
+                    dataSource?.canvas(self, configureCell: cell, at: i)
+                }
             }
         }
 

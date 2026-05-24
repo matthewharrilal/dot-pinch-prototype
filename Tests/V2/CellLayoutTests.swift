@@ -12,6 +12,7 @@ final class CellLayoutTests: XCTestCase {
     // MARK: - Fixtures
 
     /// Uniform data source: N cells of `height`.
+    @MainActor
     final class UniformDS: TimelineDataSource {
         let count: Int
         let height: CGFloat
@@ -25,6 +26,7 @@ final class CellLayoutTests: XCTestCase {
     }
 
     /// Variable-height data source: per-index heights from an array.
+    @MainActor
     final class VariableDS: TimelineDataSource {
         let heights: [CGFloat]
         init(_ heights: [CGFloat]) { self.heights = heights }

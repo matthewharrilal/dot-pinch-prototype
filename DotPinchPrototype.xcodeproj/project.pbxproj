@@ -32,6 +32,7 @@
 		5C224302943F647D3A548713 /* UIView+Pin.swift in Sources */ = {isa = PBXBuildFile; fileRef = D0AF075C9806C579377CB08B /* UIView+Pin.swift */; };
 		5CB71FCE9F829C3DA10A3C76 /* CellLayoutTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = FF3A15FFAFE4CA3F59E34AF0 /* CellLayoutTests.swift */; };
 		5D1A7B706C963CD67C843F4B /* InvariantHardeningTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 33B0EBEC10A4FD5C1794EFC0 /* InvariantHardeningTests.swift */; };
+		601D02133224722879DCFA45 /* SceneDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2F8BEC757EDA818FBB182FDF /* SceneDelegate.swift */; };
 		6B2DA3F9D1EBD2755A514B37 /* MorphChoreography.swift in Sources */ = {isa = PBXBuildFile; fileRef = E6757EAFDD900FA3FD6446F5 /* MorphChoreography.swift */; };
 		6DC4EE2FFBF3C77864DFBC97 /* Spring.swift in Sources */ = {isa = PBXBuildFile; fileRef = 47A2C2A9376CDCFEC6524895 /* Spring.swift */; };
 		705566187E6E375DDD52EA16 /* TimelineCanvas.swift in Sources */ = {isa = PBXBuildFile; fileRef = CBEB7706CB87DE7304AFFB5A /* TimelineCanvas.swift */; };
@@ -93,10 +94,12 @@
 		26104B71366AFC1A63F9DCB9 /* AppDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppDelegate.swift; sourceTree = "<group>"; };
 		2B99A1D5C8E8711310267373 /* Message.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Message.swift; sourceTree = "<group>"; };
 		2F2D96653A191939A9F90623 /* Theme.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Theme.swift; sourceTree = "<group>"; };
+		2F8BEC757EDA818FBB182FDF /* SceneDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SceneDelegate.swift; sourceTree = "<group>"; };
 		30B5E587920F988533E64AF4 /* Wave4cZOrderTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Wave4cZOrderTests.swift; sourceTree = "<group>"; };
 		33B0EBEC10A4FD5C1794EFC0 /* InvariantHardeningTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InvariantHardeningTests.swift; sourceTree = "<group>"; };
 		35AFCD95E93C979E1183F658 /* WaveR41SubstrateCanaryTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WaveR41SubstrateCanaryTests.swift; sourceTree = "<group>"; };
 		38E35B793BAFBA708788F02D /* EngagementState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EngagementState.swift; sourceTree = "<group>"; };
+		3C724153C6D6A9A4505D1ED8 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
 		3CB16E88291AD8E7A535C210 /* WaveR34BoundaryEmergenceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WaveR34BoundaryEmergenceTests.swift; sourceTree = "<group>"; };
 		3EBFB7E7C4AE4DD4315E1AFA /* WaveR36OverlapSignatureTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WaveR36OverlapSignatureTests.swift; sourceTree = "<group>"; };
 		3F59DED9C3881CBAFD689D9E /* DummyConversationLoader.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DummyConversationLoader.swift; sourceTree = "<group>"; };
@@ -145,6 +148,7 @@
 			isa = PBXGroup;
 			children = (
 				26104B71366AFC1A63F9DCB9 /* AppDelegate.swift */,
+				2F8BEC757EDA818FBB182FDF /* SceneDelegate.swift */,
 				D0AF075C9806C579377CB08B /* UIView+Pin.swift */,
 				0D7BB84BA7583CB8411C33CB /* V2RootViewController.swift */,
 			);
@@ -182,6 +186,7 @@
 				1FA08916BE6CA15C8E6C1AA1 /* App */,
 				E3DDCC04516BAE160C6A4E20 /* Conversation */,
 				859A06FD7F6116CF8A873B6E /* DesignSystem */,
+				3C724153C6D6A9A4505D1ED8 /* Info.plist */,
 			);
 			path = DotPinchPrototype;
 			sourceTree = "<group>";
@@ -433,6 +438,7 @@
 				AB7275976C4939D8D0F0670A /* RevealBlurOverlay.swift in Sources */,
 				F019CFFAAC76F9EA39F11AB0 /* RevealCoordinator.swift in Sources */,
 				1329D6F81CE2895C88D5DE4D /* RevealTokens.swift in Sources */,
+				601D02133224722879DCFA45 /* SceneDelegate.swift in Sources */,
 				6DC4EE2FFBF3C77864DFBC97 /* Spring.swift in Sources */,
 				A8867885C2E66592E27934DE /* SpringAnimator.swift in Sources */,
 				F7A0C6493EC0335FAEE7C588 /* SpringInterpolatable.swift in Sources */,
@@ -497,11 +503,8 @@
 				CODE_SIGN_STYLE = Automatic;
 				DEVELOPMENT_TEAM = "";
 				ENABLE_PREVIEWS = YES;
-				GENERATE_INFOPLIST_FILE = YES;
-				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
-				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
-				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
-				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = UIInterfaceOrientationPortrait;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = DotPinchPrototype/Info.plist;
 				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
@@ -571,11 +574,8 @@
 				CODE_SIGN_STYLE = Automatic;
 				DEVELOPMENT_TEAM = "";
 				ENABLE_PREVIEWS = YES;
-				GENERATE_INFOPLIST_FILE = YES;
-				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
-				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
-				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
-				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = UIInterfaceOrientationPortrait;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = DotPinchPrototype/Info.plist;
 				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",

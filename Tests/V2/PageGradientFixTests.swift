@@ -19,6 +19,7 @@ final class PageGradientFixTests: XCTestCase {
         super.tearDown()
     }
 
+    @MainActor
     private final class FiveCellsDS: TimelineDataSource {
         func numberOfCells(in canvas: TimelineCanvas) -> Int { 5 }
         func canvas(_ canvas: TimelineCanvas, configureCell cell: CellView, at index: Int) {}

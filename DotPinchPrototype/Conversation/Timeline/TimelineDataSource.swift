@@ -1,6 +1,7 @@
 import CoreGraphics
 import Foundation
 
+@MainActor
 protocol TimelineDataSource: AnyObject {
     func numberOfCells(in canvas: TimelineCanvas) -> Int
 

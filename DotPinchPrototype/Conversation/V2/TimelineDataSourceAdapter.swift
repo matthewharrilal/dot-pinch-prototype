@@ -11,7 +11,7 @@ final class TimelineDataSourceAdapter: TimelineDataSource {
     private let store: ConversationStore
     private let naturalCellHeight: CGFloat
 
-    init(store: ConversationStore, naturalCellHeight: CGFloat = 200) {
+    init(store: ConversationStore, naturalCellHeight: CGFloat) {
         self.store = store
         self.naturalCellHeight = naturalCellHeight
     }

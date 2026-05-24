@@ -20,7 +20,7 @@ final class V2RootViewController: UIViewController {
         self.store = ConversationStore(initialConversations: conversations)
         self.adapter = TimelineDataSourceAdapter(
             store: self.store,
-            naturalCellHeight: 200
+            naturalCellHeight: CellLayoutTuning.naturalCellHeight
         )
         self.timelineCanvas = TimelineCanvas()
         super.init(nibName: nil, bundle: nil)
@@ -107,16 +107,16 @@ final class V2RootViewController: UIViewController {
         ])
         revealBlurOverlay = blur
 
-        UIView.animate(withDuration: 0.3, delay: 0, options: [.curveEaseInOut, .allowUserInteraction], animations: {
+        UIView.animate(withDuration: RevealTiming.blurFadeInDuration, delay: 0, options: [.curveEaseInOut, .allowUserInteraction], animations: {
             blur.alpha = 1
         }, completion: nil)
 
-        UIView.animate(withDuration: 0.3, delay: 0.2, options: [.curveEaseInOut, .allowUserInteraction], animations: {
+        UIView.animate(withDuration: RevealTiming.crossFadeDuration, delay: RevealTiming.crossFadeDelay, options: [.curveEaseInOut, .allowUserInteraction], animations: {
             chatVC.view.alpha = 1
             self.timelineCanvas.alpha = 0
         }, completion: nil)
 
-        UIView.animate(withDuration: 0.7, delay: 0.5, options: [.curveEaseInOut, .allowUserInteraction], animations: {
+        UIView.animate(withDuration: RevealTiming.blurFadeOutDuration, delay: RevealTiming.blurDwellDelay, options: [.curveEaseInOut, .allowUserInteraction], animations: {
             blur.alpha = 0
         }, completion: { _ in
             blur.removeFromSuperview()

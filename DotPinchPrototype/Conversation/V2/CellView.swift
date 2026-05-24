@@ -282,7 +282,7 @@ final class CellView: UIView {
     func resetMorphState() {
         morphInProgress = false
         chatRestCenterLabel.transform = .identity
-        chatRestCenterLabel.layer.removeAnimation(forKey: "centerLabel.opacity")
+        chatRestCenterLabel.layer.removeAnimation(forKey: MorphAnimationKey.centerLabelOpacity.rawValue)
         chatRestCenterLabel.alpha = 0
     }
 }

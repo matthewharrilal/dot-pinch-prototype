@@ -1221,7 +1221,7 @@ final class TimelineCanvas: UIView, UIGestureRecognizerDelegate {
         let count = cellCount()
         guard k >= 0, k < count else { return }
         guard let activeCell = instantiatedCells[k] else { return }
-        guard contentHost.layer.animation(forKey: "windup.scale") == nil else { return }
+        guard contentHost.layer.animation(forKey: MorphAnimationKey.windupScale.rawValue) == nil else { return }
 
         // Apple HIG vestibular-trigger compliance: when Reduce Motion is on,
         // snap to chat-rest end-state synchronously instead of running the
@@ -1239,14 +1239,14 @@ final class TimelineCanvas: UIView, UIGestureRecognizerDelegate {
         activeCell.morphInProgress = true
 
         let now = CACurrentMediaTime()
-        let windupDuration: CFTimeInterval = 0.78
-        let totalMorphDuration: CFTimeInterval = 1.5
+        let windupDuration: CFTimeInterval = MorphTiming.windupDuration
+        let totalMorphDuration: CFTimeInterval = MorphTiming.totalMorphDuration
 
-        let windupContribution: CGFloat = 0.08
-        let liftEndMagnitude: CGFloat = 50
+        let windupContribution: CGFloat = MorphTiming.windupContribution
+        let liftEndMagnitude: CGFloat = MorphTiming.liftEndMagnitude
         let naturalH = activeCell.naturalHeight
-        let viewportCoverageHeight = bounds.height + 2 * liftEndMagnitude + 40
-        let chatRestFactor: CGFloat = naturalH > 0 ? viewportCoverageHeight / naturalH : 4.92
+        let viewportCoverageHeight = bounds.height + 2 * liftEndMagnitude + MorphTiming.viewportCoveragePad
+        let chatRestFactor: CGFloat = naturalH > 0 ? viewportCoverageHeight / naturalH : MorphTiming.chatRestFactorFallback
         let finalScale = chatRestFactor
         let zoomContribution = finalScale - 1.0 - windupContribution
 
@@ -1265,17 +1265,19 @@ final class TimelineCanvas: UIView, UIGestureRecognizerDelegate {
         zoomScale.toValue = zoomContribution
         zoomScale.duration = totalMorphDuration
         zoomScale.beginTime = now
-        zoomScale.timingFunction = CAMediaTimingFunction(controlPoints: 0.7, 0.0, 0.4, 1.0)
+        let zoomLandingCP = MorphCurves.zoomLanding
+        zoomScale.timingFunction = CAMediaTimingFunction(controlPoints: zoomLandingCP.0, zoomLandingCP.1, zoomLandingCP.2, zoomLandingCP.3)
         zoomScale.fillMode = .forwards
         zoomScale.isRemovedOnCompletion = false
         zoomScale.isAdditive = true
 
         let translate = CABasicAnimation(keyPath: "transform.translation.y")
         translate.fromValue = 0
-        translate.toValue = -50
+        translate.toValue = MorphTiming.translateYTarget
         translate.duration = totalMorphDuration
         translate.beginTime = now
-        translate.timingFunction = CAMediaTimingFunction(controlPoints: 0.0, 0.0, 0.2, 1.0)
+        let translateLandingCP = MorphCurves.translateLanding
+        translate.timingFunction = CAMediaTimingFunction(controlPoints: translateLandingCP.0, translateLandingCP.1, translateLandingCP.2, translateLandingCP.3)
         translate.fillMode = .forwards
         translate.isRemovedOnCompletion = false
         translate.isAdditive = true
@@ -1291,40 +1293,42 @@ final class TimelineCanvas: UIView, UIGestureRecognizerDelegate {
         centering.toValue = centeringTranslate
         centering.duration = totalMorphDuration
         centering.beginTime = now
-        centering.timingFunction = CAMediaTimingFunction(controlPoints: 0.7, 0.0, 0.4, 1.0)
+        let centeringCP = MorphCurves.zoomLanding
+        centering.timingFunction = CAMediaTimingFunction(controlPoints: centeringCP.0, centeringCP.1, centeringCP.2, centeringCP.3)
         centering.fillMode = .forwards
         centering.isRemovedOnCompletion = false
         centering.isAdditive = true
 
-        contentHost.layer.add(windupScale, forKey: "windup.scale")
-        contentHost.layer.add(zoomScale, forKey: "zoom.scale")
-        contentHost.layer.add(translate, forKey: "windup.translate")
-        contentHost.layer.add(centering, forKey: "morph.centering")
+        contentHost.layer.add(windupScale, forKey: MorphAnimationKey.windupScale.rawValue)
+        contentHost.layer.add(zoomScale, forKey: MorphAnimationKey.zoomScale.rawValue)
+        contentHost.layer.add(translate, forKey: MorphAnimationKey.windupTranslate.rawValue)
+        contentHost.layer.add(centering, forKey: MorphAnimationKey.morphCentering.rawValue)
 
         let centerLabelOpacity = CABasicAnimation(keyPath: "opacity")
         centerLabelOpacity.fromValue = 0
         centerLabelOpacity.toValue = 1
         centerLabelOpacity.duration = totalMorphDuration
         centerLabelOpacity.beginTime = now
-        centerLabelOpacity.timingFunction = CAMediaTimingFunction(controlPoints: 0.85, 0.0, 0.5, 1.0)
+        let labelOpacityCP = MorphCurves.labelOpacity
+        centerLabelOpacity.timingFunction = CAMediaTimingFunction(controlPoints: labelOpacityCP.0, labelOpacityCP.1, labelOpacityCP.2, labelOpacityCP.3)
         centerLabelOpacity.fillMode = .forwards
         centerLabelOpacity.isRemovedOnCompletion = false
-        activeCell.chatRestCenterLabel.layer.add(centerLabelOpacity, forKey: "centerLabel.opacity")
+        activeCell.chatRestCenterLabel.layer.add(centerLabelOpacity, forKey: MorphAnimationKey.centerLabelOpacity.rawValue)
 
-        UIView.animate(withDuration: 0.08, delay: 0.0, options: [.curveEaseOut, .allowUserInteraction], animations: {
+        UIView.animate(withDuration: LabelFadeTiming.dateLabelDuration, delay: LabelFadeTiming.dateLabelDelay, options: [.curveEaseOut, .allowUserInteraction], animations: {
             activeCell.dateLabel.alpha = 0
         }, completion: nil)
 
-        UIView.animate(withDuration: 0.17, delay: 0.03, options: [.curveEaseOut, .allowUserInteraction], animations: {
+        UIView.animate(withDuration: LabelFadeTiming.topicSummaryDuration, delay: LabelFadeTiming.topicSummaryDelay, options: [.curveEaseOut, .allowUserInteraction], animations: {
             activeCell.topicSummaryLabel.alpha = 0
         }, completion: nil)
 
-        UIView.animate(withDuration: 0.20, delay: 0.08, options: [.curveEaseOut, .allowUserInteraction], animations: {
+        UIView.animate(withDuration: LabelFadeTiming.todayGlyphDuration, delay: LabelFadeTiming.todayGlyphDelay, options: [.curveEaseOut, .allowUserInteraction], animations: {
             activeCell.todayLabel.alpha = 0
             activeCell.pinchGlyph.alpha = 0
         }, completion: nil)
 
-        let revealReadyDelay: TimeInterval = totalMorphDuration + 0.1
+        let revealReadyDelay: TimeInterval = totalMorphDuration + MorphTiming.revealReadyDelay
         let revealK = k
         let workItem = DispatchWorkItem { [weak self] in
             guard let self else { return }
@@ -1417,7 +1421,7 @@ final class TimelineCanvas: UIView, UIGestureRecognizerDelegate {
             // arc) derive from t in `applyMasterTick`. CADisplayLink with
             // finite duration ends deterministically at t=1 — no spring
             // asymptotic tail.
-            let unifiedArcMag: CGFloat = 50
+            let unifiedArcMag: CGFloat = MorphTiming.unifiedArcYMagnitude
 
             masterStartHeight = heightC.constant
             masterEndHeight = extensionTarget
@@ -1431,7 +1435,7 @@ final class TimelineCanvas: UIView, UIGestureRecognizerDelegate {
             extensionAnimator.stop(immediately: true)
 
             let revealK = k
-            startMasterTimer(duration: 1.2) { [weak self] in
+            startMasterTimer(duration: MorphTiming.masterTimerDuration) { [weak self] in
                 guard let self else { return }
                 CATransaction.withSuppressedActions {
                     self.contentHost.layer.transform = CATransform3DIdentity
@@ -1504,7 +1508,7 @@ final class TimelineCanvas: UIView, UIGestureRecognizerDelegate {
         let liftPhase = min(tClamped / 0.70, 1.0)
         let liftBell = sin(liftPhase * .pi)
         let unifiedArcY = -masterUnifiedArcMagnitude * liftBell
-        let unifiedArcZ = 700.0 * liftBell
+        let unifiedArcZ = MorphTiming.unifiedArcZMagnitude * liftBell
 
         let boundsRamp = tClamped
         let newHeight = masterStartHeight + (masterEndHeight - masterStartHeight) * boundsRamp

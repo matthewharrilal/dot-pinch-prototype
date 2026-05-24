@@ -1,9 +1,6 @@
 import UIKit
 
-// Design tokens — page chromatics, text colors, typography, shape, symbol
-// affordances. Page.surface and Cell.fill are intentionally distinct surface
-// tokens; see CellView.setCamera(_:viewport:) for the lerp(Cell.fill →
-// Cell.activeFill) seam (the active-cell highlight).
+// Design tokens — page chromatics, text colors, typography, shape, symbol affordances.
 enum Theme {
 
     // MARK: - Page chromatics

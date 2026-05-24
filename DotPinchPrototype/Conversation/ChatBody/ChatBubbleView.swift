@@ -1,13 +1,4 @@
-// ChatBubbleView — a single chat-bubble row rendering one Message.
-//
-// Tier 3B+: this view is hosted inside ChatBodyView, which is hosted inside
-// ConversationCell. It knows only how to render a single utterance — no
-// awareness of gestures, springs, or sibling messages.
-//
-// Vocabulary discipline (per docs/VOCABULARY.md):
-//   • Authorship reads from `Message.Role` — never "sender", never "you", never "bot".
-//   • The view renders a role-derived label string for display; the canonical
-//     vocabulary (user / assistant) is preserved at the data layer.
+// ChatBubbleView — renders a single Message as a row inside ChatViewController.bubbleStack.
 
 import UIKit
 

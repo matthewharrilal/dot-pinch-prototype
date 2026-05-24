@@ -88,17 +88,20 @@ for baseline_png in "$BASELINE_DIR"/*.png; do
   fi
 
   # Total pixel count of the baseline (width * height).
-  read -r width height < <(magick identify -format "%w %h" "$baseline_png")
+  # NOTE: `magick identify -format "%w %h"` emits no trailing newline; using
+  # `read < <(...)` under `set -e` exits when read returns nonzero on EOF.
+  # Capture into a var first, then split — safe under strict mode.
+  dim_str="$(magick identify -format "%w %h" "$baseline_png")"
+  read -r width height <<< "$dim_str"
   total_px=$(( width * height ))
 
   # `magick compare` returns non-zero if images differ; capture stderr (AE count goes there).
+  # Output looks like: "8270" or "2.97818e+06 (0.989111)" — the leading token is the AE count
+  # which may be in scientific notation. Use awk to coerce to a plain integer.
   ae_count="$(magick compare -metric AE -fuzz 1% "$baseline_png" "$current_png" "$diff_png" 2>&1 || true)"
-  # Strip non-numeric noise (e.g. "1234.5"); take leading integer-ish.
-  ae_clean="$(echo "$ae_count" | awk '{print $1}' | tr -d 'e+,')"
-  if ! [[ "$ae_clean" =~ ^[0-9]+(\.[0-9]+)?$ ]]; then
-    ae_clean="0"
-  fi
-  ae_int="${ae_clean%.*}"
+  ae_raw="$(echo "$ae_count" | awk '{print $1}')"
+  # Coerce scientific notation / decimals into an integer via printf — awk handles "2.97818e+06".
+  ae_int="$(awk -v x="$ae_raw" 'BEGIN { if (x+0 == x) printf "%d", x+0; else print 0 }')"
 
   # Compare ae_int / total_px against TOLERANCE_RATIO using awk (portable float math).
   over_pct="$(awk -v a="$ae_int" -v t="$total_px" 'BEGIN { if (t==0) print "0.000"; else printf "%.4f", (a/t)*100 }')"

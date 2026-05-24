@@ -1234,6 +1234,7 @@ final class TimelineCanvas: UIView, UIGestureRecognizerDelegate {
             return
         }
 
+        setActiveCellIndex(k)
         contentHost.bringSubviewToFront(activeCell)
         activeCell.morphInProgress = true
 

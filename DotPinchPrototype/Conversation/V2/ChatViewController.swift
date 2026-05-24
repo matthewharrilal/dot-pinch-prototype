@@ -1,8 +1,4 @@
-// ChatViewController — production chat-rest surface revealed by the morph.
-// Hosts header label + bubble scrollView + composer. Configured with a
-// Conversation; rebuilds bubble stack on configure(). Owns no animation —
-// the morph is owned by TimelineCanvas; this VC is opacity-faded in by
-// V2RootViewController.revealChat (pre-Phase 4) / RevealCoordinator (post-Phase 4).
+// ChatViewController — chat-rest surface revealed by the morph; hosts header + bubble stack + composer.
 
 import UIKit
 

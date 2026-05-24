@@ -5,7 +5,6 @@
 
 import UIKit
 import QuartzCore
-import Observation
 
 final class CellView: UIView {
 

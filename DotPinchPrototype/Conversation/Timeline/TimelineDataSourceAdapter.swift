@@ -1,7 +1,3 @@
-// Adapts ConversationStore → TimelineDataSource. Surfaces Conversation.id as
-// the cell-pool identity key (§4.3.7.3) so pool round-trips reattach the same
-// cell instance, preserving cell-internal state (§13.4).
-
 import CoreGraphics
 import Foundation
 

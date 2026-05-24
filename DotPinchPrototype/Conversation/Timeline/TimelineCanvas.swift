@@ -1377,6 +1377,8 @@ final class TimelineCanvas: UIView {
             velocity: .zero,
             spring: profile
         )
+        assert(extensionAnimator.spring.response == cameraAnimator.responseForTesting,
+               "Animator coordination invariant: camera + extension MUST share spring.response")
         cameraAnimator.stop(immediately: true)
         extensionAnimator.stop(immediately: true)
 
@@ -1429,6 +1431,8 @@ final class TimelineCanvas: UIView {
             velocity: CameraVelocity(translationVelocity: cameraTranslationVelocity),
             spring: profile
         )
+        assert(extensionAnimator.spring.response == cameraAnimator.responseForTesting,
+               "Animator coordination invariant: camera + extension MUST share spring.response")
 
         extensionAnimator.value = heightC.constant
         extensionAnimator.target = extensionTarget
@@ -1488,6 +1492,8 @@ final class TimelineCanvas: UIView {
         ) { [weak self] in
             self?.tryClearActiveCellAtRest(expectedIdx: activeIdxCaptured)
         }
+        assert(extensionAnimator.spring.response == cameraAnimator.responseForTesting,
+               "Animator coordination invariant: camera + extension MUST share spring.response")
 
         extensionAnimator.value = heightC.constant
         extensionAnimator.target = activeCell.naturalHeight

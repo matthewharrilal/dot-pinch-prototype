@@ -1,10 +1,13 @@
 import UIKit
 
 extension UIColor {
-    /// CGColor locked to sRGB. Without this, layer colors drift on P3 displays
-    /// (CAGradientLayer interpolates in sRGB regardless of device gamut).
     var sRGBLockedCGColor: CGColor {
         guard let sRGB = CGColorSpace(name: CGColorSpace.sRGB) else { return cgColor }
-        return cgColor.converted(to: sRGB, intent: .defaultIntent, options: nil) ?? cgColor
+        let result = cgColor.converted(to: sRGB, intent: .defaultIntent, options: nil) ?? cgColor
+        #if DEBUG
+        assert(result.colorSpace?.name == CGColorSpace.sRGB,
+               "UIColor.sRGBLockedCGColor: conversion produced non-sRGB color space")
+        #endif
+        return result
     }
 }

@@ -45,10 +45,6 @@ final class V2RootViewController: UIViewController {
 
         timelineCanvas.translatesAutoresizingMaskIntoConstraints = false
         view.addSubview(timelineCanvas)
-        // Canvas extends edge-to-edge AND under the status bar so the page
-        // gradient fills the screen; chat-rest cell's top corners hide
-        // behind the status bar by design (§10.13 + §0.4). cornerRadius is
-        // locked at 25pt and NOT animated.
         timelineCanvas.pinToSuperview(of: view)
 
         timelineCanvas.dataSource = adapter

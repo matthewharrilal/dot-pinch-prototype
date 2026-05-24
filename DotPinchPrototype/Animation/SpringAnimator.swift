@@ -149,6 +149,7 @@ public final class SpringAnimator<T: SpringInterpolatable>: AnimatorProviding wh
         valueChanged?(self.value ?? target)
 
         if finished {
+            assert(state == .running, "SpringAnimator: state must still be .running when completion fires (tryClearActiveCellAtRest depends on this ordering)")
             completion?(.finished(at: target))
             state = .ended
         }

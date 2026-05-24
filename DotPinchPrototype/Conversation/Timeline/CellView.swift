@@ -174,6 +174,15 @@ final class CellView: UIView {
         widthConstraint = widthC
         centerYConstraint = centerYC
         heightConstraint = heightC
+
+        #if DEBUG
+        let expectedMidY = naturalCenterY
+        DispatchQueue.main.async { [weak self] in
+            guard let self else { return }
+            assert(abs(self.frame.midY - expectedMidY) < 0.5,
+                   "CellView: centerY-anchored invariant violated; frame.midY=\(self.frame.midY) expected=\(expectedMidY)")
+        }
+        #endif
     }
 
     func deactivateLayoutConstraints() {

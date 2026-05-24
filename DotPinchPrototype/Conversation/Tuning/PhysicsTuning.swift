@@ -29,4 +29,9 @@ struct PhysicsTuning: Sendable, Equatable {
     }
 
     static let standard = PhysicsTuning()
+
+    var springDampingRatio: DampingRatio { DampingRatio(springDamping) }
+    var tapToChatDampingRatio: DampingRatio { DampingRatio(tapToChatDamping) }
+    var pinchToCellsDampingRatio: DampingRatio { DampingRatio(pinchToCellsDamping) }
+    var cancelledDampingRatio: DampingRatio { DampingRatio(cancelledDamping) }
 }

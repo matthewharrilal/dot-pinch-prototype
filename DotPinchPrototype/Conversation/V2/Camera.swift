@@ -9,15 +9,18 @@ import Foundation
 struct Camera: Equatable {
 
     /// Page-y coordinate that maps to viewport center. Finite.
-    var translation: CGFloat
+    let translation: CGFloat
 
     init(translation: CGFloat) {
-        Camera.validate(translation: translation)
+        precondition(translation.isFinite, "Camera.translation must be finite")
         self.translation = translation
     }
 
-    /// Validate camera input. Called both in init and at every setCamera write
-    /// because Camera is a mutable struct (fields may be re-assigned post-init).
+    /// Validate camera input. Retained as a thin wrapper around the same
+    /// precondition init enforces — call sites at canvas boundaries (setCamera)
+    /// can keep using it until they're updated to trust the type system. With
+    /// `translation` now `let`, post-init `.nan` reassignment is unrepresentable,
+    /// so this method is redundant at the type level and slated for removal.
     static func validate(translation: CGFloat) {
         precondition(translation.isFinite, "Camera.translation must be finite")
     }

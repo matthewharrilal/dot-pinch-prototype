@@ -92,7 +92,7 @@ final class V2RootViewController: UIViewController {
         ])
         chatVC.didMove(toParent: self)
         chatVC.configure(with: conversation)
-        view.layoutIfNeeded()
+        chatVC.view.layoutIfNeeded()
         activeChatVC = chatVC
 
         let blur = UIVisualEffectView(effect: UIBlurEffect(style: .systemMaterial))

@@ -781,6 +781,12 @@ final class TimelineCanvas: UIView, UIGestureRecognizerDelegate {
             return
         }
 
+        // Pool-clean-morph: clear morph-related transient state (morphInProgress
+        // flag + chatRestCenterLabel transform/opacity) so a recycled cell does
+        // not carry chrome ghosting into its next binding regardless of how
+        // the prior morph ended.
+        cell.resetMorphState()
+
         // Pool-clean-height: reset heightConstraint and deactivate
         // contentHost-targeted constraints before removeFromSuperview to keep
         // Auto Layout coherent.

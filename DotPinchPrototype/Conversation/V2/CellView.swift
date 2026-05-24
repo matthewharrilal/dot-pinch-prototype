@@ -297,4 +297,16 @@ final class CellView: UIView {
     @objc private func handleTap() {
         onTap?(index)
     }
+
+    // MARK: - Morph state lifecycle
+
+    /// Reset all morph-related transient state. Called by TimelineCanvas
+    /// before returning the cell to the pool, so a recycled cell starts
+    /// in a known-clean state regardless of how the prior morph ended.
+    func resetMorphState() {
+        morphInProgress = false
+        chatRestCenterLabel.transform = .identity
+        chatRestCenterLabel.layer.removeAnimation(forKey: "centerLabel.opacity")
+        chatRestCenterLabel.alpha = 0
+    }
 }

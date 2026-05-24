@@ -1,0 +1,11 @@
+--swiftversion 5.9
+--indent 4
+--maxwidth 120
+--wraparguments before-first
+--wrapcollections before-first
+--wrapparameters after-first
+--stripunusedargs closure-only
+--header strip
+--commas inline
+--trimwhitespace always
+--disable redundantSelf

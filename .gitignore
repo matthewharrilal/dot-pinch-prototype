@@ -8,3 +8,10 @@ DerivedData/
 docs/audit/captures/
 docs/audit/frames/
 docs/audit/video.mov
+
+# macOS Finder metadata
+.DS_Store
+**/.DS_Store
+
+# Refactor SSoT — local working doc, not tracked
+REFACTOR-CHECKLIST.md

@@ -111,11 +111,11 @@ final class WaveR44PerDirectionProfileTests: XCTestCase {
         )
 
         XCTAssertEqual(canvas.extensionAnimator.spring.dampingRatio,
-                       PinchTuning.tapToChatDamping, accuracy: 1e-9,
+                       PhysicsTuning.standard.tapToChatDamping, accuracy: 1e-9,
                        "pinch-from-cell-rest committing to chat-rest must use tapToChat profile, "
                        + "not pinchToCells.")
         XCTAssertEqual(canvas.cameraAnimator.dampingRatioForTesting,
-                       PinchTuning.tapToChatDamping, accuracy: 1e-9,
+                       PhysicsTuning.standard.tapToChatDamping, accuracy: 1e-9,
                        "camera animator must receive the same tapToChat profile as extension.")
     }
 
@@ -133,10 +133,10 @@ final class WaveR44PerDirectionProfileTests: XCTestCase {
         )
 
         XCTAssertEqual(canvas.extensionAnimator.spring.dampingRatio,
-                       PinchTuning.pinchToCellsDamping, accuracy: 1e-9,
+                       PhysicsTuning.standard.pinchToCellsDamping, accuracy: 1e-9,
                        "chat-rest → cell-rest commit uses critically-damped profile.")
         XCTAssertEqual(canvas.cameraAnimator.dampingRatioForTesting,
-                       PinchTuning.pinchToCellsDamping, accuracy: 1e-9,
+                       PhysicsTuning.standard.pinchToCellsDamping, accuracy: 1e-9,
                        "camera animator matches extension profile.")
     }
 
@@ -153,11 +153,11 @@ final class WaveR44PerDirectionProfileTests: XCTestCase {
         )
 
         XCTAssertEqual(canvas.extensionAnimator.spring.dampingRatio,
-                       PinchTuning.cancelledDamping, accuracy: 1e-9,
+                       PhysicsTuning.standard.cancelledDamping, accuracy: 1e-9,
                        "cell-rest → partial → cell-rest uses cancelled profile (~0.95), "
                        + "NOT pinchToCells.")
         XCTAssertEqual(canvas.cameraAnimator.dampingRatioForTesting,
-                       PinchTuning.cancelledDamping, accuracy: 1e-9,
+                       PhysicsTuning.standard.cancelledDamping, accuracy: 1e-9,
                        "camera animator matches extension profile.")
     }
 
@@ -176,11 +176,11 @@ final class WaveR44PerDirectionProfileTests: XCTestCase {
         )
 
         XCTAssertEqual(canvas.extensionAnimator.spring.dampingRatio,
-                       PinchTuning.cancelledDamping, accuracy: 1e-9,
+                       PhysicsTuning.standard.cancelledDamping, accuracy: 1e-9,
                        "chat-rest → partial → chat-rest uses cancelled (NOT tapToChat); "
                        + "cancelled is keyed off cancel-return, not destination identity.")
         XCTAssertEqual(canvas.cameraAnimator.dampingRatioForTesting,
-                       PinchTuning.cancelledDamping, accuracy: 1e-9,
+                       PhysicsTuning.standard.cancelledDamping, accuracy: 1e-9,
                        "camera animator matches extension profile.")
     }
 
@@ -243,7 +243,7 @@ final class WaveR44PerDirectionProfileTests: XCTestCase {
         )
 
         XCTAssertEqual(canvas.extensionAnimator.spring.dampingRatio,
-                       PinchTuning.tapToChatDamping, accuracy: 1e-9,
+                       PhysicsTuning.standard.tapToChatDamping, accuracy: 1e-9,
                        "positive velocity at below-midpoint extension must trigger velocity "
                        + "bias → commit → tapToChat profile. Sign-flip would cancel.")
     }

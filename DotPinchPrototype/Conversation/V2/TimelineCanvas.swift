@@ -64,21 +64,7 @@ final class TimelineCanvas: UIView, UIGestureRecognizerDelegate {
 
     private(set) var pinchRecognizer: UIPinchGestureRecognizer!
 
-    /// UIKit's `.began` scale may be the prior gesture's terminal scale; the
-    /// `recognizer.scale / pinchInitialScale` divide in `.changed` cancels.
-    private var pinchInitialScale: CGFloat = 1.0
-    private var pinchInitialExtension: CGFloat = 0
-
-    /// Page-coord Y of the centroid at `.began`. `.changed` writes camera so
-    /// this page-Y stays mapped to the current centroid viewport-Y as the cell
-    /// extends. Locked at `.began` only — recomputing during `.changed` would
-    /// degenerate the formula to a constant, eliminating finger-tracking.
-    private var pinchAnchorPageY: CGFloat = 0
-
-    /// Previous-tick centroid state for translation velocity at `.ended`.
-    /// Used ONLY by `.ended`; never read during `.changed`.
-    private var pinchPreviousCentroidY: CGFloat = 0
-    private var pinchPreviousCentroidTimestamp: CFTimeInterval = 0
+    private var pinchState = PinchState()
 
     // MARK: - Camera animation
 
@@ -93,26 +79,10 @@ final class TimelineCanvas: UIView, UIGestureRecognizerDelegate {
     /// two springs share natural frequency (coordination invariant).
     private(set) var extensionAnimator: SpringAnimator<CGFloat>!
 
-    /// Deterministic master timer (CADisplayLink-based) for tap-to-chat.
-    /// Finite duration + linear master clock + per-property curves — replaces
-    /// a spring whose asymptotic settling tail reads as "still animating".
-    private var masterTimer: CADisplayLink?
-    /// DisplayLink-local accumulator. Sums `link.targetTimestamp - link.timestamp`
-    /// per tick rather than subtracting wall-clock `CACurrentMediaTime` —
-    /// when backgrounded mid-morph the link pauses, the accumulator pauses
-    /// with it, and on foreground resume `rawT` continues from where it
-    /// left off instead of snapping to t=1.0.
-    private var masterTimerElapsed: TimeInterval = 0
-    private var masterTimerDuration: TimeInterval = 5.0
-    private var masterTimerCompletion: (() -> Void)?
-
-    // Snapshots captured at tap, frozen for the duration of the master timer.
-    private var masterStartHeight: CGFloat = 0
-    private var masterEndHeight: CGFloat = 0
-    private var masterStartCameraY: CGFloat = 0
-    private var masterEndCameraY: CGFloat = 0
-    private var masterUnifiedArcMagnitude: CGFloat = 0
-    private var masterActiveCellIndex: Int? = nil
+    private(set) lazy var morphChoreographer: MorphChoreographer = MorphChoreographer(
+        canvas: self,
+        controller: animationController
+    )
 
     /// Cancellation handle for the deferred `onMorphRevealReady` fire that
     /// follows the tap-to-chat asyncAfter path. Cancelled on pinch .began,
@@ -153,19 +123,24 @@ final class TimelineCanvas: UIView, UIGestureRecognizerDelegate {
 
     // MARK: - Init
 
-    init(controller: AnimationController, frame: CGRect = .zero) {
+    let physicsTuning: PhysicsTuning
+
+    init(controller: AnimationController,
+         tuning: PhysicsTuning = .standard,
+         frame: CGRect = .zero) {
         self.animationController = controller
+        self.physicsTuning = tuning
         super.init(frame: frame)
         installViewHierarchy()
         installPageGradient()
         installPanRecognizer()
         installPinchRecognizer()
-        cameraAnimator = CameraAnimator(canvas: self, controller: animationController)
+        cameraAnimator = CameraAnimator(canvas: self, controller: animationController, tuning: tuning)
         extensionAnimator = SpringAnimator<CGFloat>(
             controller: animationController,
             spring: Spring(
-                dampingRatio: PinchTuning.springDamping,
-                response: PinchTuning.springResponse
+                dampingRatio: tuning.springDamping,
+                response: tuning.springResponse
             )
         )
         extensionAnimator.valueChanged = { [weak self] _ in
@@ -180,7 +155,6 @@ final class TimelineCanvas: UIView, UIGestureRecognizerDelegate {
     }
 
     deinit {
-        masterTimer?.invalidate()
         pendingRevealWorkItem?.cancel()
     }
 
@@ -675,6 +649,7 @@ final class TimelineCanvas: UIView, UIGestureRecognizerDelegate {
                 let desiredID = dataSource?.canvas(self, conversationIDForCellAt: i)
                 let (cell, preservedState) = dequeueCell(preferredConversationID: desiredID)
                 cell.index = i
+                cell.morphChoreographer = morphChoreographer
                 // Set TAMIC=false BEFORE addSubview so UIKit doesn't synthesize
                 // autoresizing constraints that conflict with explicit ones.
                 cell.translatesAutoresizingMaskIntoConstraints = false
@@ -746,17 +721,17 @@ final class TimelineCanvas: UIView, UIGestureRecognizerDelegate {
               let activeCell = instantiatedCells[activeIdx],
               activeCell.naturalHeight > 0 else {
             for (_, cell) in instantiatedCells {
-                cell.transform = .identity
+                cell.resetFollowTransform()
             }
             return
         }
-        let halfGrowth = (activeCell.bounds.height - activeCell.naturalHeight) / 2
+        let growth = activeCell.bounds.height - activeCell.naturalHeight
         for (index, cell) in instantiatedCells {
             if index == activeIdx {
-                cell.transform = .identity
+                cell.resetFollowTransform()
             } else {
-                let ty: CGFloat = (index < activeIdx) ? -halfGrowth : +halfGrowth
-                cell.transform = CGAffineTransform(translationX: 0, y: ty)
+                let position: CellView.NeighborPosition = (index < activeIdx) ? .above : .below
+                cell.followActive(growth: growth, position: position)
             }
         }
     }
@@ -959,6 +934,14 @@ final class TimelineCanvas: UIView, UIGestureRecognizerDelegate {
         )
     }
 
+    // MARK: - Engagement predicate
+
+    private var isQuiet: Bool {
+        !morphChoreographer.isRunning
+            && !cameraAnimator.isRunning
+            && extensionAnimator.state != .running
+    }
+
     // MARK: - Pinch gesture
 
     @objc private func handlePinch(_ recognizer: UIPinchGestureRecognizer) {
@@ -985,6 +968,7 @@ final class TimelineCanvas: UIView, UIGestureRecognizerDelegate {
     /// Internal (not private) so adversarial tests can drive the handler
     /// with a mock recognizer subclass overriding state/scale/location.
     internal func handlePinchBegan(_ recognizer: UIPinchGestureRecognizer) {
+        morphChoreographer.stop()
         cameraAnimator.stop(immediately: true)
         extensionAnimator.stop(immediately: true)
         // Cancel any in-flight reveal from a prior tap-to-chat — a fresh
@@ -999,35 +983,35 @@ final class TimelineCanvas: UIView, UIGestureRecognizerDelegate {
         let anchorCellIdx = cellIndex(atPagePoint: anchorPage)
         setActiveCellIndex(anchorCellIdx)
 
-        pinchAnchorPageY = anchorPage.y
+        pinchState.anchorPageY = anchorPage.y
 
         // Unconditional overwrite so a prior gesture's stale state cannot leak in.
-        pinchPreviousCentroidY = screenCenter.y
-        pinchPreviousCentroidTimestamp = CACurrentMediaTime()
+        pinchState.previousCentroidY = screenCenter.y
+        pinchState.previousCentroidTimestamp = CACurrentMediaTime()
 
-        pinchInitialScale = recognizer.scale
+        pinchState.initialScale = recognizer.scale
 
         if let idx = anchorCellIdx, let activeCell = instantiatedCells[idx] {
-            pinchInitialExtension = activeCell.heightConstraint?.constant ?? activeCell.naturalHeight
+            pinchState.initialExtension = activeCell.heightConstraint?.constant ?? activeCell.naturalHeight
             // Raise the active cell so its extension renders ABOVE neighbors.
             contentHost.bringSubviewToFront(activeCell)
         } else {
-            pinchInitialExtension = 0
+            pinchState.initialExtension = 0
         }
     }
 
     /// layoutIfNeeded forces the solve so cell.frame tracks the new height
     /// before subsequent reads (hit-test timing).
     internal func handlePinchChanged(_ recognizer: UIPinchGestureRecognizer) {
-        guard pinchInitialScale > 1e-6 else { return }
+        guard pinchState.initialScale > 1e-6 else { return }
         guard let activeIdx = activeCellIndex,
               let activeCell = instantiatedCells[activeIdx],
               let heightC = activeCell.heightConstraint else { return }
         let naturalH = activeCell.naturalHeight
         guard naturalH > 0, bounds.height > 0 else { return }
 
-        let scaleFactor = recognizer.scale / pinchInitialScale
-        let rawNewExtension = pinchInitialExtension * scaleFactor
+        let scaleFactor = recognizer.scale / pinchState.initialScale
+        let rawNewExtension = pinchState.initialExtension * scaleFactor
 
         // Clamp to [naturalHeight, naturalHeight × chatRestFactor × 1.15].
         // The 1.15 headroom is the rubberband budget for over-pinch.
@@ -1043,29 +1027,26 @@ final class TimelineCanvas: UIView, UIGestureRecognizerDelegate {
         }
 
         // Pinch anchor stability: write camera so the page-coord captured at
-        // .began (pinchAnchorPageY) stays mapped to the current centroid
+        // .began (pinchState.anchorPageY) stays mapped to the current centroid
         // viewport-y. Derived by inverting viewportPoint(fromPage:...):
         // `camera.translation = y_page + viewport.height/2 - y_viewport`.
         let currentCentroidViewportY = recognizer.location(in: self).y
-        let newTranslation = pinchAnchorPageY + bounds.height / 2 - currentCentroidViewportY
+        let newTranslation = pinchState.anchorPageY + bounds.height / 2 - currentCentroidViewportY
         guard newTranslation.isFinite else { return }
         setCamera(Camera(translation: newTranslation))
 
         // Update AFTER setCamera so observers reading inside onCameraChanged
         // see consistent state. Reuse the captured centroid Y — do NOT call
         // recognizer.location again (UIKit could return a different value).
-        pinchPreviousCentroidY = currentCentroidViewportY
-        pinchPreviousCentroidTimestamp = CACurrentMediaTime()
+        pinchState.previousCentroidY = currentCentroidViewportY
+        pinchState.previousCentroidTimestamp = CACurrentMediaTime()
     }
 
     /// Commit decision: extensionFactor-vs-threshold with velocity bias so a
     /// fast release past midpoint commits even at modest extension. Both
-    /// springs (camera + extension) use matched `PinchTuning` params.
+    /// springs (camera + extension) use matched `PhysicsTuning` params.
     internal func handlePinchEnded(_ recognizer: UIPinchGestureRecognizer) {
-        defer {
-            pinchInitialScale = 1.0
-            pinchInitialExtension = 0
-        }
+        defer { pinchState.reset() }
 
         guard let activeIdx = activeCellIndex,
               let activeCell = instantiatedCells[activeIdx],
@@ -1078,7 +1059,7 @@ final class TimelineCanvas: UIView, UIGestureRecognizerDelegate {
         let commitThreshold: CGFloat = (1.0 + chatRestFactor) / 2.0
 
         let pinchVel = recognizer.velocity.isFinite ? recognizer.velocity : 0
-        let extensionVel = pinchInitialExtension * pinchVel
+        let extensionVel = pinchState.initialExtension * pinchVel
         let velocityBias = (extensionVel / naturalH) * 0.15
         let weightedFactor = currentFactor + velocityBias
 
@@ -1089,47 +1070,47 @@ final class TimelineCanvas: UIView, UIGestureRecognizerDelegate {
         // (centroidY increasing) ⇒ negative translation velocity.
         let currentCentroidY = recognizer.location(in: self).y
         let nowTimestamp = CACurrentMediaTime()
-        let dt = nowTimestamp - pinchPreviousCentroidTimestamp
+        let dt = nowTimestamp - pinchState.previousCentroidTimestamp
         let cameraTranslationVelocity: CGFloat
         if dt > 1e-6 && dt.isFinite
-            && currentCentroidY.isFinite && pinchPreviousCentroidY.isFinite {
-            let centroidVelocity = (currentCentroidY - pinchPreviousCentroidY) / dt
+            && currentCentroidY.isFinite && pinchState.previousCentroidY.isFinite {
+            let centroidVelocity = (currentCentroidY - pinchState.previousCentroidY) / dt
             cameraTranslationVelocity = -centroidVelocity
         } else {
             cameraTranslationVelocity = 0
         }
 
         // Classify direction by ORIGIN × DESTINATION (NOT by recognizer scale
-        // sign). Origin = pinchInitialExtension at .began (within 5% of
+        // sign). Origin = pinchState.initialExtension at .began (within 5% of
         // naturalH = cell-rest origin).
-        let originatedFromCellRest = pinchInitialExtension <= naturalH * 1.05
-        let direction: SpringDirection
+        let originatedFromCellRest = pinchState.initialExtension <= naturalH * 1.05
+        let commit: GestureCommit
         if commitToChatRest && originatedFromCellRest {
-            direction = .tapToChat
+            commit = .tapToChat
         } else if commitToChatRest && !originatedFromCellRest {
-            // Originated at chat-rest, partial pinch-in, released past
-            // threshold → returns to chat-rest. Cancelled gesture.
-            direction = .cancelled
+            commit = .cancelled
         } else if !commitToChatRest && !originatedFromCellRest {
-            direction = .pinchToCells
+            commit = .pinchToCells
         } else {
-            // Originated at cell-rest, released below threshold → returns
-            // to cell-rest. Cancelled gesture.
-            direction = .cancelled
+            commit = .cancelled
         }
 
         if commitToChatRest {
-            animateCameraToChatRestPath(
-                forCellAt: activeIdx,
-                initialVelocity: extensionVel,
-                cameraTranslationVelocity: cameraTranslationVelocity,
-                direction: direction
-            )
+            if commit == .tapToChat {
+                playTapToChatMorph(forCellAt: activeIdx)
+            } else {
+                springToChatRest(
+                    forCellAt: activeIdx,
+                    carriedExtensionVelocity: extensionVel,
+                    cameraTranslationVelocity: cameraTranslationVelocity,
+                    commit: commit
+                )
+            }
         } else {
-            animateCameraToCellRestPath(
-                initialExtensionVelocity: extensionVel,
+            springToCellRest(
+                carriedExtensionVelocity: extensionVel,
                 cameraTranslationVelocity: cameraTranslationVelocity,
-                direction: direction
+                commit: commit
             )
         }
     }
@@ -1138,54 +1119,35 @@ final class TimelineCanvas: UIView, UIGestureRecognizerDelegate {
     /// decision does NOT run on involuntary cancellation (Control Center
     /// swipe / incoming call). Restores to whichever rest the gesture
     /// originated from with zero velocity — recognizer.scale at .cancelled
-    /// is unreliable, so origin classification (pinchInitialExtension) is
+    /// is unreliable, so origin classification (pinchState.initialExtension) is
     /// the only sound signal.
     internal func handlePinchCancelled(_ recognizer: UIPinchGestureRecognizer) {
-        defer {
-            pinchInitialScale = 1.0
-            pinchInitialExtension = 0
-        }
+        defer { pinchState.reset() }
         guard let activeIdx = activeCellIndex,
               let activeCell = instantiatedCells[activeIdx] else {
             return
         }
         let naturalH = activeCell.naturalHeight
-        let originatedFromCellRest = pinchInitialExtension <= naturalH * 1.05
+        let originatedFromCellRest = pinchState.initialExtension <= naturalH * 1.05
         if originatedFromCellRest {
-            animateCameraToCellRestPath(
-                initialExtensionVelocity: 0,
+            springToCellRest(
+                carriedExtensionVelocity: 0,
                 cameraTranslationVelocity: 0,
-                direction: .cancelled
+                commit: .cancelled
             )
         } else {
-            animateCameraToChatRestPath(
+            springToChatRest(
                 forCellAt: activeIdx,
-                initialVelocity: 0,
+                carriedExtensionVelocity: 0,
                 cameraTranslationVelocity: 0,
-                direction: .cancelled
+                commit: .cancelled
             )
         }
     }
 
-    /// Direction classification keyed off destination + origin, NOT off
-    /// recognizer.scale sign.
-    fileprivate enum SpringDirection {
-        case tapToChat
-        case pinchToCells
-        case cancelled
-    }
-
-    /// Returns a fresh `Spring` per call so callers apply the same value to
-    /// both extensionAnimator and cameraAnimator (within-animation parameter
-    /// identity). Response shared across all profiles.
-    fileprivate func springProfile(for direction: SpringDirection) -> Spring {
-        let damping: CGFloat
-        switch direction {
-        case .tapToChat:    damping = PinchTuning.tapToChatDamping
-        case .pinchToCells: damping = PinchTuning.pinchToCellsDamping
-        case .cancelled:    damping = PinchTuning.cancelledDamping
-        }
-        return Spring(dampingRatio: damping, response: PinchTuning.springResponse)
+    fileprivate func springProfile(for commit: GestureCommit) -> Spring {
+        Spring(dampingRatio: commit.dampingRatio(from: physicsTuning),
+               response: physicsTuning.springResponse)
     }
 
     /// Write `activeCell.heightConstraint.constant` per-tick. Suppressed
@@ -1211,7 +1173,7 @@ final class TimelineCanvas: UIView, UIGestureRecognizerDelegate {
     /// extension collapses to naturalHeight. activeCellIndex clears at spring
     /// completion (active-cell-pool-protection holds throughout).
     func animateCameraToCellRest() {
-        animateCameraToCellRestPath(initialExtensionVelocity: 0)
+        springToCellRest(carriedExtensionVelocity: 0)
     }
 
     /// Public entry — tap-to-chat. Guarded against re-entry (in-flight morph)
@@ -1223,6 +1185,7 @@ final class TimelineCanvas: UIView, UIGestureRecognizerDelegate {
         guard k >= 0, k < count else { return }
         guard let activeCell = instantiatedCells[k] else { return }
         guard contentHost.layer.animation(forKey: MorphAnimationKey.windupScale.rawValue) == nil else { return }
+        guard isQuiet else { return }
 
         // Apple HIG vestibular-trigger compliance: when Reduce Motion is on,
         // snap to chat-rest end-state synchronously instead of running the
@@ -1237,7 +1200,6 @@ final class TimelineCanvas: UIView, UIGestureRecognizerDelegate {
 
         setActiveCellIndex(k)
         contentHost.bringSubviewToFront(activeCell)
-        activeCell.morphInProgress = true
         pinchRecognizer.isEnabled = false
 
         let now = CACurrentMediaTime()
@@ -1287,9 +1249,6 @@ final class TimelineCanvas: UIView, UIGestureRecognizerDelegate {
         let cellOffsetFromViewportCenter = activeCell.frame.midY - camera.translation
         let centeringTranslate = -cellOffsetFromViewportCenter * finalScale
 
-        let labelCounterScale = 1.0 / finalScale
-        activeCell.chatRestCenterLabel.transform = CGAffineTransform(scaleX: labelCounterScale, y: labelCounterScale)
-
         let centering = CABasicAnimation(keyPath: "transform.translation.y")
         centering.fromValue = 0
         centering.toValue = centeringTranslate
@@ -1306,29 +1265,12 @@ final class TimelineCanvas: UIView, UIGestureRecognizerDelegate {
         contentHost.layer.add(translate, forKey: MorphAnimationKey.windupTranslate.rawValue)
         contentHost.layer.add(centering, forKey: MorphAnimationKey.morphCentering.rawValue)
 
-        let centerLabelOpacity = CABasicAnimation(keyPath: "opacity")
-        centerLabelOpacity.fromValue = 0
-        centerLabelOpacity.toValue = 1
-        centerLabelOpacity.duration = totalMorphDuration
-        centerLabelOpacity.beginTime = now
-        let labelOpacityCP = MorphCurves.labelOpacity
-        centerLabelOpacity.timingFunction = CAMediaTimingFunction(controlPoints: labelOpacityCP.0, labelOpacityCP.1, labelOpacityCP.2, labelOpacityCP.3)
-        centerLabelOpacity.fillMode = .forwards
-        centerLabelOpacity.isRemovedOnCompletion = false
-        activeCell.chatRestCenterLabel.layer.add(centerLabelOpacity, forKey: MorphAnimationKey.centerLabelOpacity.rawValue)
-
-        UIView.animate(withDuration: LabelFadeTiming.dateLabelDuration, delay: LabelFadeTiming.dateLabelDelay, options: [.curveEaseOut, .allowUserInteraction], animations: {
-            activeCell.dateLabel.alpha = 0
-        }, completion: nil)
-
-        UIView.animate(withDuration: LabelFadeTiming.topicSummaryDuration, delay: LabelFadeTiming.topicSummaryDelay, options: [.curveEaseOut, .allowUserInteraction], animations: {
-            activeCell.topicSummaryLabel.alpha = 0
-        }, completion: nil)
-
-        UIView.animate(withDuration: LabelFadeTiming.todayGlyphDuration, delay: LabelFadeTiming.todayGlyphDelay, options: [.curveEaseOut, .allowUserInteraction], animations: {
-            activeCell.todayLabel.alpha = 0
-            activeCell.pinchGlyph.alpha = 0
-        }, completion: nil)
+        let chromeProfile = CellView.MorphChromeProfile(
+            counterScale: 1.0 / finalScale,
+            centerLabelDuration: totalMorphDuration,
+            centerLabelBeginTime: now
+        )
+        activeCell.performMorphChromeTransition(profile: chromeProfile)
 
         let revealReadyDelay: TimeInterval = totalMorphDuration + MorphTiming.revealReadyDelay
         let revealK = k
@@ -1367,14 +1309,7 @@ final class TimelineCanvas: UIView, UIGestureRecognizerDelegate {
             contentHost.layoutIfNeeded()
             setActiveCellIndex(k)
 
-            // Chrome end-state (Decision X3 — without these the snap lands
-            // visually-broken vs the morph endpoint).
-            cell.dateLabel.alpha = 0
-            cell.topicSummaryLabel.alpha = 0
-            cell.todayLabel.alpha = 0
-            cell.pinchGlyph.alpha = 0
-            cell.chatRestCenterLabel.alpha = 1
-            cell.chatRestCenterLabel.transform = CGAffineTransform(scaleX: labelCounterScale, y: labelCounterScale)
+            cell.snapToChatRestChromeEndState(counterScale: labelCounterScale)
 
             // contentHost transform reset — the morph applies a sin-bell arc
             // transform mid-flight; the snap path must clear it explicitly
@@ -1387,11 +1322,57 @@ final class TimelineCanvas: UIView, UIGestureRecognizerDelegate {
     /// Internal chat-rest path. Called by `animateCameraToChatRest` (tap)
     /// and `handlePinchEnded` commit branch (with carried velocity).
     /// Sub-1pt/s velocities floor to 0 via `CameraAnimator.safeVel`.
-    fileprivate func animateCameraToChatRestPath(
+    fileprivate func playTapToChatMorph(forCellAt k: Int) {
+        setActiveCellIndex(k)
+        guard let activeCell = instantiatedCells[k],
+              let heightC = activeCell.heightConstraint else { return }
+        contentHost.bringSubviewToFront(activeCell)
+        pinchRecognizer.isEnabled = false
+
+        let naturalH = activeCell.naturalHeight
+        guard naturalH > 0, bounds.height > 0 else { return }
+        let chatRestFactor = bounds.height / naturalH
+        let cameraTarget = activeCell.frame.midY
+        let extensionTarget = naturalH * chatRestFactor
+
+        let profile = springProfile(for: .tapToChat)
+        extensionAnimator.spring = profile
+        extensionAnimator.completion = nil
+        cameraAnimator.animate(
+            to: Camera(translation: cameraTarget),
+            velocity: .zero,
+            spring: profile
+        )
+        cameraAnimator.stop(immediately: true)
+        extensionAnimator.stop(immediately: true)
+
+        let choreo = MorphChoreography(
+            activeCellIndex: k,
+            startCameraY: camera.translation,
+            endCameraY: cameraTarget,
+            startHeight: heightC.constant,
+            endHeight: extensionTarget,
+            unifiedArcYMagnitude: MorphTiming.unifiedArcYMagnitude,
+            unifiedArcZMagnitude: MorphTiming.unifiedArcZMagnitude,
+            duration: MorphTiming.masterTimerDuration,
+            chatRestFactor: chatRestFactor
+        )
+        let revealK = k
+        morphChoreographer.engage(choreo) { [weak self] in
+            guard let self else { return }
+            CATransaction.withSuppressedActions {
+                self.contentHost.layer.transform = CATransform3DIdentity
+            }
+            self.updateNeighborTranslations()
+            self.onMorphRevealReady?(revealK)
+        }
+    }
+
+    fileprivate func springToChatRest(
         forCellAt k: Int,
-        initialVelocity: CGFloat,
-        cameraTranslationVelocity: CGFloat = 0,
-        direction: SpringDirection = .tapToChat
+        carriedExtensionVelocity: CGFloat,
+        cameraTranslationVelocity: CGFloat,
+        commit: GestureCommit
     ) {
         setActiveCellIndex(k)
         guard let activeCell = instantiatedCells[k],
@@ -1402,15 +1383,10 @@ final class TimelineCanvas: UIView, UIGestureRecognizerDelegate {
         let naturalH = activeCell.naturalHeight
         guard naturalH > 0, bounds.height > 0 else { return }
         let chatRestFactor = bounds.height / naturalH
-
-        // centerY-anchored cells: frame.midY is page-coord invariant under
-        // extension, so it's the chat-rest camera target.
         let cameraTarget = activeCell.frame.midY
         let extensionTarget = naturalH * chatRestFactor
 
-        // Reset extension completion to avoid a stale tryClearActiveCellAtRest
-        // closure from a prior cell-rest engagement.
-        let profile = springProfile(for: direction)
+        let profile = springProfile(for: commit)
         extensionAnimator.spring = profile
         extensionAnimator.completion = nil
 
@@ -1420,117 +1396,28 @@ final class TimelineCanvas: UIView, UIGestureRecognizerDelegate {
             spring: profile
         )
 
-        if direction == .tapToChat {
-            // Master-clock path. All visual properties (height, camera, Y/Z
-            // arc) derive from t in `applyMasterTick`. CADisplayLink with
-            // finite duration ends deterministically at t=1 — no spring
-            // asymptotic tail.
-            let unifiedArcMag: CGFloat = MorphTiming.unifiedArcYMagnitude
-
-            masterStartHeight = heightC.constant
-            masterEndHeight = extensionTarget
-            masterStartCameraY = camera.translation
-            masterEndCameraY = cameraTarget
-            masterUnifiedArcMagnitude = unifiedArcMag
-            masterActiveCellIndex = k
-
-            // Stop the per-direction animators that would otherwise fight us.
-            cameraAnimator.stop(immediately: true)
-            extensionAnimator.stop(immediately: true)
-
-            let revealK = k
-            startMasterTimer(duration: MorphTiming.masterTimerDuration) { [weak self] in
-                guard let self else { return }
-                CATransaction.withSuppressedActions {
-                    self.contentHost.layer.transform = CATransform3DIdentity
-                }
-                self.masterActiveCellIndex = nil
-                self.updateNeighborTranslations()
-                // Parity-Break Ledger 8B (intentional UX delta): pinch-commit
-                // path now fires reveal at master-timer completion. Tap-to-chat
-                // fires via the asyncAfter in animateCameraToChatRest; the two
-                // entry points do not overlap (verified per 9O.6 codepath
-                // trace — public method and *Path are disjoint).
-                self.onMorphRevealReady?(revealK)
-            }
-        } else {
-            // pinch-to-cells / cancelled — two-spring path (camera + extension).
-            extensionAnimator.value = heightC.constant
-            extensionAnimator.target = extensionTarget
-            extensionAnimator.velocity = initialVelocity
-            extensionAnimator.start()
-        }
+        extensionAnimator.value = heightC.constant
+        extensionAnimator.target = extensionTarget
+        extensionAnimator.velocity = carriedExtensionVelocity
+        extensionAnimator.start()
     }
 
-    /// Deterministic CADisplayLink master timer. Linear raw t — outer easing
-    /// stacked on per-property curves caused weird normalization. Per-property
-    /// curves in applyMasterTick do their own shaping. ProMotion 120Hz is
-    /// requested so the morph remains smooth even when no springs are running
-    /// (otherwise the link silently drops to 60Hz mid-morph).
-    private func startMasterTimer(duration: TimeInterval, completion: @escaping () -> Void) {
-        masterTimer?.invalidate()
-        masterTimerElapsed = 0
-        masterTimerDuration = duration
-        masterTimerCompletion = completion
-        let link = CADisplayLink(target: self, selector: #selector(masterTimerTick(_:)))
-        link.preferredFrameRateRange = CAFrameRateRange(minimum: 80, maximum: 120, preferred: 120)
-        link.add(to: .main, forMode: .common)
-        masterTimer = link
+    func cancelInFlightAnimations() {
+        morphChoreographer.stop()
+        cameraAnimator.stop(immediately: true)
+        extensionAnimator.stop(immediately: true)
+        pendingRevealWorkItem?.cancel()
+        pendingRevealWorkItem = nil
     }
 
-    @objc private func masterTimerTick(_ link: CADisplayLink) {
-        // DisplayLink-local time accumulator — pauses with the link when
-        // backgrounded, resumes from where it left off. Wall-clock subtraction
-        // would clamp to 1.0 on resume and produce a one-frame snap-to-end.
-        masterTimerElapsed += link.targetTimestamp - link.timestamp
-        let rawT = CGFloat(min(masterTimerElapsed / masterTimerDuration, 1.0))
-        applyMasterTick(rawT)
-        if rawT >= 1.0 {
-            masterTimer?.invalidate()
-            masterTimer = nil
-            let completion = masterTimerCompletion
-            masterTimerCompletion = nil
-            completion?()
-        }
-    }
-
-    /// Master tick. Y and Z share the same phase curve — both peak together
-    /// at t≈0.35 and resolve to identity by t≈0.70 (the "initial lift" and
-    /// "camera proximity" happen simultaneously, then decouple from the
-    /// continuing bounds expansion in the latter 30%). Z=700 with focal=1000
-    /// projects to apparent scale ~3.33 at peak — the cell visibly exceeds
-    /// the viewport via perspective rather than 2D scale. Bounds + camera
-    /// are linear lerps on t. All properties written atomically in one
-    /// CATransaction so they share one render pass (no inter-property tearing).
-    private func applyMasterTick(_ t: CGFloat) {
-        guard let k = masterActiveCellIndex,
-              let cell = instantiatedCells[k],
-              let heightC = cell.heightConstraint else { return }
-
-        let tClamped = max(0, min(1, t))
-
-        let liftPhase = min(tClamped / 0.70, 1.0)
-        let liftBell = sin(liftPhase * .pi)
-        let unifiedArcY = -masterUnifiedArcMagnitude * liftBell
-        let unifiedArcZ = MorphTiming.unifiedArcZMagnitude * liftBell
-
-        let boundsRamp = tClamped
-        let newHeight = masterStartHeight + (masterEndHeight - masterStartHeight) * boundsRamp
-        let newCameraY = masterStartCameraY + (masterEndCameraY - masterStartCameraY) * boundsRamp
-
-        CATransaction.withSuppressedActions {
-            contentHost.layer.transform = CATransform3DMakeTranslation(0, unifiedArcY, unifiedArcZ)
-
-            heightC.constant = newHeight
-            contentHost.layoutIfNeeded()
-            camera = Camera(translation: newCameraY)
-            applyCameraTransform()
-            updateVisibleCells()
-            cell.setCamera(camera, viewport: bounds)
-            updateNeighborTranslations()
-            updateEdgeMaskAlphas()
-            onCameraChanged?(camera, bounds)
-        }
+    func applyMorphTickCameraWrite(translation: CGFloat, cell: CellView) {
+        camera = Camera(translation: translation)
+        applyCameraTransform()
+        updateVisibleCells()
+        cell.setCamera(camera, viewport: bounds)
+        updateNeighborTranslations()
+        updateEdgeMaskAlphas()
+        onCameraChanged?(camera, bounds)
     }
 
     /// Internal cell-rest path. activeCellIndex clears only when BOTH springs
@@ -1539,10 +1426,10 @@ final class TimelineCanvas: UIView, UIGestureRecognizerDelegate {
     /// camera same-target short-circuit (the prior camera-completion-only
     /// version fired synchronously under same-target and left
     /// heightConstraint extended with activeCellIndex=nil).
-    fileprivate func animateCameraToCellRestPath(
-        initialExtensionVelocity: CGFloat,
+    fileprivate func springToCellRest(
+        carriedExtensionVelocity: CGFloat,
         cameraTranslationVelocity: CGFloat = 0,
-        direction: SpringDirection = .pinchToCells
+        commit: GestureCommit = .pinchToCells
     ) {
         guard let activeIdx = activeCellIndex,
               let activeCell = instantiatedCells[activeIdx],
@@ -1555,7 +1442,7 @@ final class TimelineCanvas: UIView, UIGestureRecognizerDelegate {
         let cameraTarget = lastCellRestScrollY + bounds.height / 2
         let activeIdxCaptured = activeIdx
 
-        let profile = springProfile(for: direction)
+        let profile = springProfile(for: commit)
         extensionAnimator.spring = profile
 
         cameraAnimator.animate(
@@ -1568,7 +1455,7 @@ final class TimelineCanvas: UIView, UIGestureRecognizerDelegate {
 
         extensionAnimator.value = heightC.constant
         extensionAnimator.target = activeCell.naturalHeight
-        extensionAnimator.velocity = initialExtensionVelocity
+        extensionAnimator.velocity = carriedExtensionVelocity
         extensionAnimator.completion = { [weak self] event in
             if case .finished = event {
                 self?.tryClearActiveCellAtRest(expectedIdx: activeIdxCaptured)

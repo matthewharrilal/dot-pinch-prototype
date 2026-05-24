@@ -30,26 +30,26 @@ final class CameraAnimator {
     private weak var canvas: TimelineCanvas?
     private let translationAnimator: SpringAnimator<CGFloat>
 
-    // MARK: - Outer completion state
+    // MARK: - Engagement state
 
-    private var pendingCompletion: (() -> Void)?
-    private var outerCompletionFired: Bool = true  // true => not engaged
-    private var stoppedByCaller: Bool = false
+    private var state: EngagementState = .idle
 
     // MARK: - Init
 
     init(
         canvas: TimelineCanvas,
         controller: AnimationController,
-        spring: Spring = Spring(
-            dampingRatio: PinchTuning.springDamping,
-            response: PinchTuning.springResponse
-        )
+        tuning: PhysicsTuning = .standard,
+        spring: Spring? = nil
     ) {
         self.canvas = canvas
+        let resolvedSpring = spring ?? Spring(
+            dampingRatio: tuning.springDamping,
+            response: tuning.springResponse
+        )
         self.translationAnimator = SpringAnimator<CGFloat>(
             controller: controller,
-            spring: spring
+            spring: resolvedSpring
         )
 
         wireValueChangedAndCompletion()
@@ -68,7 +68,8 @@ final class CameraAnimator {
     // MARK: - Public API
 
     var isRunning: Bool {
-        translationAnimator.state == .running
+        if case .engaged = state { return true }
+        return false
     }
 
     /// Exposed for a canary test asserting camera + extension animators share
@@ -110,8 +111,8 @@ final class CameraAnimator {
             return
         }
 
-        if !outerCompletionFired {
-            stoppedByCaller = true
+        if case .engaged = state {
+            state = .stopping
             translationAnimator.stop(immediately: true)
         }
 
@@ -126,19 +127,15 @@ final class CameraAnimator {
             if abs(rawVel) < Self.velocityFloor { return 0 }
             return rawVel
         }()
-        // Record post-floor velocity BEFORE same-target short-circuit.
         lastAnimateVelocityForTesting = safeVel
 
-        outerCompletionFired = false
-        stoppedByCaller = false
-        pendingCompletion = completion
+        state = .engaged(completion: completion)
 
         let sameTarget = current.isApproximatelyEqual(target, tolerance: 1e-9)
         if sameTarget {
-            outerCompletionFired = true
-            let pending = pendingCompletion
-            pendingCompletion = nil
-            pending?()
+            let fire = completion
+            state = .idle
+            fire?()
             return
         }
 
@@ -156,13 +153,10 @@ final class CameraAnimator {
         translationAnimator.spring.response
     }
 
-    /// Halt the animator. Outer completion does NOT fire on caller-initiated
-    /// stops — callers needing confirmation use natural settle.
     func stop(immediately: Bool = true) {
-        stoppedByCaller = true
-        pendingCompletion = nil
-        outerCompletionFired = true
+        state = .stopping
         translationAnimator.stop(immediately: immediately)
+        state = .idle
     }
 
     // MARK: - Per-tick application
@@ -176,15 +170,12 @@ final class CameraAnimator {
     // MARK: - Outer completion gating
 
     private func tryFireOuterCompletion() {
-        guard !outerCompletionFired else { return }
-        outerCompletionFired = true
-        let suppress = stoppedByCaller
-        let pending = pendingCompletion
-        pendingCompletion = nil
-        if !suppress {
-            // Final-frame flush so observers see the fully-settled camera.
-            writeCameraFromInnerValue()
-            pending?()
+        guard case .engaged(let pending) = state else {
+            state = .idle
+            return
         }
+        state = .idle
+        writeCameraFromInnerValue()
+        pending?()
     }
 }

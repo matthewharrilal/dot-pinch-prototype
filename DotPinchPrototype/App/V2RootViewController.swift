@@ -24,7 +24,7 @@ final class V2RootViewController: UIViewController {
         )
         let controller = AnimationController()
         self.animationController = controller
-        self.timelineCanvas = TimelineCanvas(controller: controller)
+        self.timelineCanvas = TimelineCanvas(controller: controller, tuning: .standard)
         super.init(nibName: nil, bundle: nil)
     }
 
@@ -83,6 +83,7 @@ final class V2RootViewController: UIViewController {
     }
 
     @objc private func handleSceneWillDeactivate() {
+        timelineCanvas.cancelInFlightAnimations()
         revealCoordinator.cancelInFlight()
     }
 

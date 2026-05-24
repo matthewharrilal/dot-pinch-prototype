@@ -28,10 +28,9 @@ final class CellView: UIView {
     /// morph animator as the visible day-marker at chat-rest.
     private(set) var chatRestCenterLabel: UILabel!
 
-    /// When true, `setCamera(_:viewport:)` skips alpha/chrome writes because
-    /// an external morph animator owns those properties for the duration of
-    /// the morph.
-    var morphInProgress: Bool = false
+    weak var morphChoreographer: MorphChoreographer?
+
+    var morphInProgress: Bool { morphChoreographer?.isRunning ?? false }
 
     private(set) var pinchGlyph: UIImageView!
 
@@ -276,13 +275,76 @@ final class CellView: UIView {
 
     // MARK: - Morph state lifecycle
 
-    /// Reset all morph-related transient state. Called by TimelineCanvas
-    /// before returning the cell to the pool, so a recycled cell starts
-    /// in a known-clean state regardless of how the prior morph ended.
     func resetMorphState() {
-        morphInProgress = false
         chatRestCenterLabel.transform = .identity
         chatRestCenterLabel.layer.removeAnimation(forKey: MorphAnimationKey.centerLabelOpacity.rawValue)
         chatRestCenterLabel.alpha = 0
+    }
+
+    enum NeighborPosition {
+        case above
+        case below
+    }
+
+    func followActive(growth: CGFloat, position: NeighborPosition) {
+        let direction: CGFloat = (position == .above) ? -1 : 1
+        let ty = direction * growth * 0.5
+        transform = CGAffineTransform(translationX: 0, y: ty)
+    }
+
+    func resetFollowTransform() {
+        transform = .identity
+    }
+
+    struct MorphChromeProfile {
+        let counterScale: CGFloat
+        let centerLabelDuration: TimeInterval
+        let centerLabelBeginTime: CFTimeInterval
+    }
+
+    func snapToChatRestChromeEndState(counterScale: CGFloat) {
+        dateLabel.alpha = 0
+        topicSummaryLabel.alpha = 0
+        todayLabel.alpha = 0
+        pinchGlyph.alpha = 0
+        chatRestCenterLabel.alpha = 1
+        chatRestCenterLabel.transform = CGAffineTransform(scaleX: counterScale, y: counterScale)
+    }
+
+    func performMorphChromeTransition(profile: MorphChromeProfile) {
+        chatRestCenterLabel.transform = CGAffineTransform(scaleX: profile.counterScale, y: profile.counterScale)
+
+        let centerOpacity = CABasicAnimation(keyPath: "opacity")
+        centerOpacity.fromValue = 0
+        centerOpacity.toValue = 1
+        centerOpacity.duration = profile.centerLabelDuration
+        centerOpacity.beginTime = profile.centerLabelBeginTime
+        let labelOpacityCP = MorphCurves.labelOpacity
+        centerOpacity.timingFunction = CAMediaTimingFunction(
+            controlPoints: labelOpacityCP.0, labelOpacityCP.1, labelOpacityCP.2, labelOpacityCP.3)
+        centerOpacity.fillMode = .forwards
+        centerOpacity.isRemovedOnCompletion = false
+        chatRestCenterLabel.layer.add(centerOpacity, forKey: MorphAnimationKey.centerLabelOpacity.rawValue)
+
+        UIView.animate(withDuration: LabelFadeTiming.dateLabelDuration,
+                       delay: LabelFadeTiming.dateLabelDelay,
+                       options: [.curveEaseOut, .allowUserInteraction],
+                       animations: { self.dateLabel.alpha = 0 },
+                       completion: nil)
+
+        UIView.animate(withDuration: LabelFadeTiming.topicSummaryDuration,
+                       delay: LabelFadeTiming.topicSummaryDelay,
+                       options: [.curveEaseOut, .allowUserInteraction],
+                       animations: { self.topicSummaryLabel.alpha = 0 },
+                       completion: nil)
+
+        UIView.animate(withDuration: LabelFadeTiming.todayGlyphDuration,
+                       delay: LabelFadeTiming.todayGlyphDelay,
+                       options: [.curveEaseOut, .allowUserInteraction],
+                       animations: {
+                           self.todayLabel.alpha = 0
+                           self.pinchGlyph.alpha = 0
+                       },
+                       completion: nil)
     }
 }

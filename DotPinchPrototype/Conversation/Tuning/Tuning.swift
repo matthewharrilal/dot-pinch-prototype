@@ -35,3 +35,7 @@ struct PhysicsTuning: Sendable, Equatable {
     var pinchToCellsDampingRatio: DampingRatio { DampingRatio(pinchToCellsDamping) }
     var cancelledDampingRatio: DampingRatio { DampingRatio(cancelledDamping) }
 }
+
+enum CellLayoutTuning {
+    static let naturalCellHeight: CGFloat = 200
+}

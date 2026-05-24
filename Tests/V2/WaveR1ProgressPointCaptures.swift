@@ -49,8 +49,6 @@ final class WaveR1ProgressPointCaptures: XCTestCase {
         let (canvas, _) = makeCanvas()
         let activeCellIdx = 1
         canvas.animateCameraToChatRest(forCellAt: activeCellIdx)
-        canvas.anticipationAnimator?.stopAnimation(false)
-        canvas.anticipationAnimator?.finishAnimation(at: .end)
         // Stop main springs so they don't tick during manual writes.
         canvas.cameraAnimator.stop(immediately: true)
         canvas.extensionAnimator.stop(immediately: true)

@@ -27,9 +27,9 @@ final class WaveR33SymmetricExtensionTests: XCTestCase {
         return canvas
     }
 
+    /// Historical no-op (anticipation animator removed per Task 0.2).
     private func drainAnticipation(_ canvas: TimelineCanvas) {
-        canvas.anticipationAnimator?.stopAnimation(false)
-        canvas.anticipationAnimator?.finishAnimation(at: .end)
+        _ = canvas
     }
 
     func testSymmetricExtensionAtMultipleFactors() {

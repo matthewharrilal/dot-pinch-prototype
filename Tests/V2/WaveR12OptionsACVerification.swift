@@ -26,9 +26,9 @@ final class WaveR12OptionsACVerification: XCTestCase {
         return canvas
     }
 
+    /// Historical no-op (anticipation animator removed per Task 0.2).
     private func drainAnticipation(_ canvas: TimelineCanvas) {
-        canvas.anticipationAnimator?.stopAnimation(false)
-        canvas.anticipationAnimator?.finishAnimation(at: .end)
+        _ = canvas
     }
 
     @discardableResult
@@ -62,8 +62,6 @@ final class WaveR12OptionsACVerification: XCTestCase {
 
         XCTAssertEqual(canvas.activeCellIndex, 1,
                        "activeCellIndex must stay 1; tap on cell 3 ignored")
-        XCTAssertNil(canvas.anticipationAnimator,
-                     "no anticipation animator engaged for the ignored tap")
         XCTAssertEqual(cell1.heightConstraint?.constant ?? -1, cell1ExtBefore,
                        accuracy: 0.5,
                        "cell 1's extension must not change (no spring engagement on j)")

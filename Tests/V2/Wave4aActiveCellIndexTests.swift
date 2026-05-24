@@ -26,11 +26,6 @@ final class Wave4aActiveCellIndexTests: XCTestCase {
         XCTAssertEqual(canvas.activeCellIndex, 2,
                        "animateCameraToChatRest(forCellAt: 2) should set activeCellIndex = 2")
 
-        // Drain anticipation deterministically so its 80ms completion can't
-        // fire during the cell-rest spin and re-engage the chat-rest path.
-        canvas.anticipationAnimator?.stopAnimation(false)
-        canvas.anticipationAnimator?.finishAnimation(at: .end)
-
         // Clear is deferred until BOTH springs settle (tryClearActiveCellAtRest
         // checks cameraAtTarget && extensionAtTarget). Spin run loop.
         canvas.animateCameraToCellRest()

@@ -15,6 +15,8 @@ public struct Spring: Equatable {
     public var mass: CGFloat = 1.0
 
     public init(dampingRatio: CGFloat, response: CGFloat, mass: CGFloat = 1.0) {
+        precondition(dampingRatio >= 0, "Spring: dampingRatio must be >= 0 (got \(dampingRatio))")
+        precondition(response > 0, "Spring: response must be > 0 (got \(response))")
         self.dampingRatio = dampingRatio
         self.response = response
         self.mass = mass

@@ -109,10 +109,6 @@ final class TimelineCanvas: UIView, UIGestureRecognizerDelegate {
     private var masterUnifiedArcMagnitude: CGFloat = 0
     private var masterActiveCellIndex: Int? = nil
 
-    /// Anticipation animator (UIViewPropertyAnimator). A pinch .began cancels
-    /// it; a tap while a spring is active is ignored.
-    private(set) var anticipationAnimator: UIViewPropertyAnimator?
-
     // MARK: - Cell-rest scroll-Y persistence
 
     /// Most recent scroll-Y at no-active-cell-rest. Persisted so
@@ -961,8 +957,6 @@ final class TimelineCanvas: UIView, UIGestureRecognizerDelegate {
     internal func handlePinchBegan(_ recognizer: UIPinchGestureRecognizer) {
         cameraAnimator.stop(immediately: true)
         extensionAnimator.stop(immediately: true)
-        anticipationAnimator?.stopAnimation(true)
-        anticipationAnimator = nil
         self.endEditing(true)
 
         let screenCenter = recognizer.location(in: self)

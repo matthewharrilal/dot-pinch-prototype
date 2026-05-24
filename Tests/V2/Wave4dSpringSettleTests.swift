@@ -26,11 +26,11 @@ final class Wave4dSpringSettleTests: XCTestCase {
         return canvas
     }
 
-    /// Anticipation runs BEFORE the main spring on tap-to-chat. Tests
-    /// inspecting main-spring state must drain it first.
+    /// Historical no-op (anticipation animator removed per Task 0.2). Kept as
+    /// a stable callsite so existing tests still compile; the master-timer
+    /// path is now synchronous-enough for callers' purposes.
     private func drainAnticipation(_ canvas: TimelineCanvas) {
-        canvas.anticipationAnimator?.stopAnimation(false)
-        canvas.anticipationAnimator?.finishAnimation(at: .end)
+        _ = canvas
     }
 
     func testAnimateCameraToChatRestEngagesBothSprings() {

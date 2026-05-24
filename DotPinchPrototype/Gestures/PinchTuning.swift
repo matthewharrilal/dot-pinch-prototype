@@ -26,38 +26,4 @@ enum PinchTuning {
 
     /// §7.17 cancelled damping — gesture returns to its originating rest.
     static var cancelledDamping: CGFloat = 0.95
-
-    // MARK: - Anticipation (D2 §7.24 + §10.78)
-
-    /// §7.24 anticipation magnitude. Bound: [0.95, 0.99]. Read once at
-    /// animator construction — changes don't apply to in-flight anticipation.
-    private static var _anticipationMagnitude: CGFloat = 0.97
-    static var anticipationMagnitude: CGFloat {
-        get { _anticipationMagnitude }
-        set {
-            precondition(
-                newValue >= 0.95 && newValue <= 0.99,
-                "§7.24: anticipationMagnitude must be in [0.95, 0.99]; got \(newValue)"
-            )
-            _anticipationMagnitude = newValue
-        }
-    }
-
-    /// §10.78 anticipation duration in seconds. Bound: [0.05, 0.10]. Read once
-    /// at animator construction.
-    private static var _anticipationDuration: TimeInterval = 0.08
-    static var anticipationDuration: TimeInterval {
-        get { _anticipationDuration }
-        set {
-            precondition(
-                newValue >= 0.05 && newValue <= 0.10,
-                "§10.78: anticipationDuration must be in [0.05, 0.10]; got \(newValue)"
-            )
-            _anticipationDuration = newValue
-        }
-    }
-
-    /// Phase 5 A/B testing flag (§7.8.4 + §10.76). When true, tap-to-chat skips
-    /// anticipation (Π''' fallback). Ships `false`. Read at engagement only.
-    static var anticipationDisabled: Bool = false
 }

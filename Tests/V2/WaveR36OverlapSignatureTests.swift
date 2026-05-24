@@ -27,9 +27,9 @@ final class WaveR36OverlapSignatureTests: XCTestCase {
         return canvas
     }
 
+    /// Historical no-op (anticipation animator removed per Task 0.2).
     private func drainAnticipation(_ canvas: TimelineCanvas) {
-        canvas.anticipationAnimator?.stopAnimation(false)
-        canvas.anticipationAnimator?.finishAnimation(at: .end)
+        _ = canvas
     }
 
     /// Carrier alpha (cell.alpha == 1.0) holds for ALL cells at ALL

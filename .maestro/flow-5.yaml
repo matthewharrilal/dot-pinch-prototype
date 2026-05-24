@@ -1,0 +1,20 @@
+# Flow 5 — background-resume mid-morph (Task 0.12)
+# Per SSoT 8C: backgrounded mid-morph; post-Phase-0 continues from pause.
+# Maestro lacks a primitive backgrounding action in 2.5.1; we simulate by
+# stopping then relaunching the app mid-morph. The capture intent is
+# "did the app survive the lifecycle round-trip with sane visual state".
+appId: com.matthewharrilal.dotpinchprototype
+---
+- launchApp:
+    clearState: false
+- waitForAnimationToEnd:
+    timeout: 3000
+- tapOn:
+    point: "50%,22%"
+- takeScreenshot: flow-5-pre-background
+- stopApp
+- launchApp:
+    clearState: false
+- waitForAnimationToEnd:
+    timeout: 3000
+- takeScreenshot: flow-5-post-resume

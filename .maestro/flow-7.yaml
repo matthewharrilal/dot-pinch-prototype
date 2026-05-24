@@ -1,0 +1,26 @@
+# Flow 7 — RevealCoordinator dismiss (Phase 4 Task 4.5, new path)
+# Per SSoT 8C: the new dismiss choreography; "reverse-direction parity"
+# property requires that dismiss looks like reveal played backwards.
+# Pre-Phase-4 there is no RevealCoordinator path — this flow's diff is
+# expected to register a delta once Phase 4 lands. For pre-migration
+# baseline we capture the current dismiss behaviour (pinch-in from
+# chat-rest) so that Phase 4 has a referent.
+appId: com.matthewharrilal.dotpinchprototype
+---
+- launchApp:
+    clearState: false
+- waitForAnimationToEnd:
+    timeout: 3000
+- tapOn:
+    point: "50%,22%"
+- waitForAnimationToEnd:
+    timeout: 4000
+- takeScreenshot: flow-7-chat-rest-pre-dismiss
+- swipe:
+    start: "20%,30%"
+    end: "45%,50%"
+    duration: 500
+- takeScreenshot: flow-7-mid-dismiss
+- waitForAnimationToEnd:
+    timeout: 3000
+- takeScreenshot: flow-7-dismissed

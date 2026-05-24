@@ -1,0 +1,20 @@
+# Flow 6 — reduce-motion-enabled tap (Task 0.13)
+# Per SSoT 8C: with Reduce Motion enabled, tap should snap instantly to
+# chat-rest. We enable the simulator setting via launchArguments
+# (UIAccessibilityReduceMotionEnabled) — Maestro forwards these. Three
+# captures bracket the transition.
+appId: com.matthewharrilal.dotpinchprototype
+---
+- launchApp:
+    clearState: false
+    arguments:
+      UIAccessibilityReduceMotionEnabled: true
+- waitForAnimationToEnd:
+    timeout: 3000
+- takeScreenshot: flow-6-rm-pre-tap
+- tapOn:
+    point: "50%,22%"
+- takeScreenshot: flow-6-rm-t50ms
+- waitForAnimationToEnd:
+    timeout: 3000
+- takeScreenshot: flow-6-rm-settled

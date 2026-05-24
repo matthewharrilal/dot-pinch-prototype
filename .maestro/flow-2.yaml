@@ -1,0 +1,23 @@
+# Flow 2 — pinch-commit-to-chat-rest
+# Per SSoT 8C: pinch outward on a cell past the commit threshold, releases
+# into chat-rest. Six 8C anchors (S0–S5) collapse here into three captures:
+# pre-pinch, mid-spread, settled-chat. Pinch is simulated via two-finger
+# coordinate spread (Maestro `swipe` with `from`/`to` runs single-finger;
+# we use `tapOn` to focus then a series of `swipe` calls to approximate
+# spread. Where pinch fidelity matters, the visual-diff report calls out
+# the deviation.
+appId: com.matthewharrilal.dotpinchprototype
+---
+- launchApp:
+    clearState: false
+- waitForAnimationToEnd:
+    timeout: 3000
+- takeScreenshot: flow-2-S0-home
+- swipe:
+    start: "40%,22%"
+    end: "20%,15%"
+    duration: 600
+- takeScreenshot: flow-2-S2-mid-spread
+- waitForAnimationToEnd:
+    timeout: 3000
+- takeScreenshot: flow-2-S5-settled-chat

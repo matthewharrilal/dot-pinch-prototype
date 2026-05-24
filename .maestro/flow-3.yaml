@@ -1,0 +1,24 @@
+# Flow 3 — pinch-to-cell-rest (cancel direction)
+# Per SSoT 8C: from chat-rest, pinch inward past the cancel threshold, settles
+# back to cell-rest. Pre-requisite — flow must arrive at chat-rest first
+# (via tap, the cheapest path). Five 8C anchors (S0–S4) collapse here into
+# three captures: chat-rest, mid-pinch-in, settled-cell-rest.
+appId: com.matthewharrilal.dotpinchprototype
+---
+- launchApp:
+    clearState: false
+- waitForAnimationToEnd:
+    timeout: 3000
+- tapOn:
+    point: "50%,22%"
+- waitForAnimationToEnd:
+    timeout: 4000
+- takeScreenshot: flow-3-S0-chat-rest
+- swipe:
+    start: "20%,30%"
+    end: "45%,50%"
+    duration: 600
+- takeScreenshot: flow-3-S2-pinching-in
+- waitForAnimationToEnd:
+    timeout: 3000
+- takeScreenshot: flow-3-S4-settled-cell-rest

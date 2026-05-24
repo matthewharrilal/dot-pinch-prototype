@@ -1,0 +1,26 @@
+# Flow 1 — tap-to-chat (the primary morph)
+# Per SSoT 8C: captures the home → chat morph via single tap.
+#
+# Pragmatic adaptation: the canonical 8C flow specifies six per-state captures
+# (S0–S5, at t=0.4 / 0.8 / 1.5 / 1.85 / 2.6s) which require sub-frame timing
+# control Maestro doesn't natively provide. We capture three observable
+# anchor states: S0 (pre-tap), S3 (mid-morph approximation via post-tap
+# screenshot), and S5 (settled chat). Mid-frame captures (S1/S2/S4) are
+# documented as deferred — see docs/visual-baselines/README.md.
+#
+# Bundle ID is parameterised so the same flow runs against any build of
+# the prototype on any iOS 18 simulator. Coordinates are point-space
+# (iPhone 16, 393x852pt) — tap targets the first cell's center.
+appId: com.matthewharrilal.dotpinchprototype
+---
+- launchApp:
+    clearState: false
+- waitForAnimationToEnd:
+    timeout: 3000
+- takeScreenshot: flow-1-S0-home
+- tapOn:
+    point: "50%,22%"
+- takeScreenshot: flow-1-S3-mid-morph
+- waitForAnimationToEnd:
+    timeout: 4000
+- takeScreenshot: flow-1-S5-settled-chat

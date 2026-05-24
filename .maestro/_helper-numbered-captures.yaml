@@ -1,0 +1,34 @@
+# Helper — captures the seven SSoT-spec-numbered baseline frames (01..07)
+# in a single sweep. Not part of the canonical 8C flow suite (which uses
+# the S0–S5 per-flow naming) — this exists so the pre-migration baseline
+# also carries the spec's 01..07 named files for any consumer that
+# references the original wave-0 mission spec.
+appId: com.matthewharrilal.dotpinchprototype
+---
+- launchApp:
+    clearState: false
+- waitForAnimationToEnd:
+    timeout: 3000
+- takeScreenshot: 01-home-cell-rest
+- swipe:
+    start: "50%,70%"
+    end: "50%,20%"
+    duration: 400
+- waitForAnimationToEnd:
+    timeout: 2000
+- takeScreenshot: 02-home-scrolled
+- tapOn:
+    point: "50%,50%"
+- takeScreenshot: 03-tap-mid-morph
+- waitForAnimationToEnd:
+    timeout: 4000
+- takeScreenshot: 04-chat-rest-settled
+- takeScreenshot: 05-chat-content-visible
+- swipe:
+    start: "30%,40%"
+    end: "60%,20%"
+    duration: 500
+- takeScreenshot: 06-pinch-mid-spread
+- waitForAnimationToEnd:
+    timeout: 3000
+- takeScreenshot: 07-pinch-released-settled

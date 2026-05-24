@@ -30,6 +30,7 @@
 		51A923B65B779DCA13A720AF /* PageGradientFixTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = BDD3A193B5F9101A9D7695FD /* PageGradientFixTests.swift */; };
 		526211D2719552364F570FDE /* RevealTiming.swift in Sources */ = {isa = PBXBuildFile; fileRef = A8D2FC8BF688845B5BACE954 /* RevealTiming.swift */; };
 		5CB71FCE9F829C3DA10A3C76 /* CellLayoutTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = FF3A15FFAFE4CA3F59E34AF0 /* CellLayoutTests.swift */; };
+		63700414D801754C36E03E06 /* RevealCoordinator.swift in Sources */ = {isa = PBXBuildFile; fileRef = F6C621775E21A4CDBA87BADB /* RevealCoordinator.swift */; };
 		6678942A6F56DD09E94CB21E /* CameraAnimator.swift in Sources */ = {isa = PBXBuildFile; fileRef = CD3AF39EE31FA0957376477F /* CameraAnimator.swift */; };
 		67F7694AF0723AFCB5A280DA /* TimelineCanvas.swift in Sources */ = {isa = PBXBuildFile; fileRef = 39F633EB36474A35CA6C54D7 /* TimelineCanvas.swift */; };
 		6D95E08559E65DACE97A4987 /* CellLayoutTuning.swift in Sources */ = {isa = PBXBuildFile; fileRef = FA2AC327D46B2D06F10C80BA /* CellLayoutTuning.swift */; };
@@ -54,6 +55,7 @@
 		E5E33F7A599590846E637743 /* WaveR11LifecycleAdversarialTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 898F083BB89B86C62F8E6E7B /* WaveR11LifecycleAdversarialTests.swift */; };
 		E5FDEAE61D895392FC69F78B /* Phase0Spike07AutoLayoutSolverCost.swift in Sources */ = {isa = PBXBuildFile; fileRef = 47544EC6960FEB1E3C800136 /* Phase0Spike07AutoLayoutSolverCost.swift */; };
 		EC3340B09887F3F355F9BD4A /* WaveR1ProgressPointCaptures.swift in Sources */ = {isa = PBXBuildFile; fileRef = 580F4AFF91E3953AEB08D02E /* WaveR1ProgressPointCaptures.swift */; };
+		EF238E6143B87C519663719E /* RevealBlurOverlay.swift in Sources */ = {isa = PBXBuildFile; fileRef = E90A9A29A2DAE0DC91376E6E /* RevealBlurOverlay.swift */; };
 		F4A9069B4F87CAFC02550469 /* Wave4cZOrderTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 30B5E587920F988533E64AF4 /* Wave4cZOrderTests.swift */; };
 		F7A0C6493EC0335FAEE7C588 /* SpringInterpolatable.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7E9E4D0ECBFDC33807A5B93D /* SpringInterpolatable.swift */; };
 		FDB53425B949EC493440423C /* MathUtilities.swift in Sources */ = {isa = PBXBuildFile; fileRef = AAC72D2582CD3237A83539C8 /* MathUtilities.swift */; };
@@ -121,7 +123,9 @@
 		C86706CE8A2088A412BFB256 /* Conversation.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Conversation.swift; sourceTree = "<group>"; };
 		C958576729603FF1EDDDE6C8 /* AccessibilityID.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AccessibilityID.swift; sourceTree = "<group>"; };
 		CD3AF39EE31FA0957376477F /* CameraAnimator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CameraAnimator.swift; sourceTree = "<group>"; };
+		E90A9A29A2DAE0DC91376E6E /* RevealBlurOverlay.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RevealBlurOverlay.swift; sourceTree = "<group>"; };
 		EECC2D01E900646A2D46D713 /* WaveR33SymmetricExtensionTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WaveR33SymmetricExtensionTests.swift; sourceTree = "<group>"; };
+		F6C621775E21A4CDBA87BADB /* RevealCoordinator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RevealCoordinator.swift; sourceTree = "<group>"; };
 		FA2AC327D46B2D06F10C80BA /* CellLayoutTuning.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CellLayoutTuning.swift; sourceTree = "<group>"; };
 		FF3A15FFAFE4CA3F59E34AF0 /* CellLayoutTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CellLayoutTests.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
@@ -280,6 +284,8 @@
 				CD3AF39EE31FA0957376477F /* CameraAnimator.swift */,
 				B35A0C99FDF05D5D72B8CD06 /* CellView.swift */,
 				6D6F595813B6AEB181BA5011 /* ChatViewController.swift */,
+				E90A9A29A2DAE0DC91376E6E /* RevealBlurOverlay.swift */,
+				F6C621775E21A4CDBA87BADB /* RevealCoordinator.swift */,
 				39F633EB36474A35CA6C54D7 /* TimelineCanvas.swift */,
 				87C7041F1FF347A5EE232678 /* TimelineDataSource.swift */,
 				B180A6EB968EDC8BA8CF92E3 /* TimelineDataSourceAdapter.swift */,
@@ -399,6 +405,8 @@
 				50E5F504823FDD2B4F4D3DA8 /* MorphCurves.swift in Sources */,
 				ACE8460EAC1E7C57258956CE /* MorphTiming.swift in Sources */,
 				A0CEB31B4912689F55E0032E /* PinchTuning.swift in Sources */,
+				EF238E6143B87C519663719E /* RevealBlurOverlay.swift in Sources */,
+				63700414D801754C36E03E06 /* RevealCoordinator.swift in Sources */,
 				526211D2719552364F570FDE /* RevealTiming.swift in Sources */,
 				6DC4EE2FFBF3C77864DFBC97 /* Spring.swift in Sources */,
 				A8867885C2E66592E27934DE /* SpringAnimator.swift in Sources */,

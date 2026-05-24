@@ -11,8 +11,7 @@ final class V2RootViewController: UIViewController {
     private let adapter: TimelineDataSourceAdapter
     private let animationController: AnimationController
     private let timelineCanvas: TimelineCanvas
-    private var activeChatVC: ChatViewController?
-    private var revealBlurOverlay: UIVisualEffectView?
+    private lazy var revealCoordinator = RevealCoordinator(parent: self, canvas: timelineCanvas)
 
     // MARK: - Init
 
@@ -65,65 +64,33 @@ final class V2RootViewController: UIViewController {
         timelineCanvas.addGestureRecognizer(tap)
 
         timelineCanvas.onMorphRevealReady = { [weak self] cellIndex in
-            self?.revealChat(forCellAt: cellIndex)
+            guard let self else { return }
+            guard cellIndex < self.store.conversations.count else { return }
+            guard !self.revealCoordinator.isPresenting else { return }
+            self.revealCoordinator.present(conversation: self.store.conversations[cellIndex])
         }
+
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(handleSceneWillDeactivate),
+            name: UIScene.willDeactivateNotification,
+            object: nil
+        )
+    }
+
+    deinit {
+        NotificationCenter.default.removeObserver(self)
+    }
+
+    @objc private func handleSceneWillDeactivate() {
+        revealCoordinator.cancelInFlight()
     }
 
     @objc private func handleTap(_ recognizer: UITapGestureRecognizer) {
         let viewportPoint = recognizer.location(in: timelineCanvas)
         let pagePoint = timelineCanvas.pagePointFromViewportPoint(viewportPoint)
         guard let idx = timelineCanvas.cellIndex(atPagePoint: pagePoint) else { return }
-        guard activeChatVC == nil else { return }
+        guard !revealCoordinator.isPresenting else { return }
         timelineCanvas.animateCameraToChatRest(forCellAt: idx)
-    }
-
-    private func revealChat(forCellAt index: Int) {
-        guard activeChatVC == nil else { return }
-        guard index < store.conversations.count else { return }
-        let conversation = store.conversations[index]
-
-        let chatVC = ChatViewController()
-        addChild(chatVC)
-        chatVC.view.translatesAutoresizingMaskIntoConstraints = false
-        chatVC.view.alpha = 0
-        view.addSubview(chatVC.view)
-        NSLayoutConstraint.activate([
-            chatVC.view.topAnchor.constraint(equalTo: view.topAnchor),
-            chatVC.view.leadingAnchor.constraint(equalTo: view.leadingAnchor),
-            chatVC.view.trailingAnchor.constraint(equalTo: view.trailingAnchor),
-            chatVC.view.bottomAnchor.constraint(equalTo: view.bottomAnchor)
-        ])
-        chatVC.didMove(toParent: self)
-        chatVC.configure(with: conversation)
-        chatVC.view.layoutIfNeeded()
-        activeChatVC = chatVC
-
-        let blur = UIVisualEffectView(effect: UIBlurEffect(style: .systemMaterial))
-        blur.translatesAutoresizingMaskIntoConstraints = false
-        blur.alpha = 0
-        view.addSubview(blur)
-        NSLayoutConstraint.activate([
-            blur.topAnchor.constraint(equalTo: view.topAnchor),
-            blur.leadingAnchor.constraint(equalTo: view.leadingAnchor),
-            blur.trailingAnchor.constraint(equalTo: view.trailingAnchor),
-            blur.bottomAnchor.constraint(equalTo: view.bottomAnchor)
-        ])
-        revealBlurOverlay = blur
-
-        UIView.animate(withDuration: RevealTiming.blurFadeInDuration, delay: 0, options: [.curveEaseInOut, .allowUserInteraction], animations: {
-            blur.alpha = 1
-        }, completion: nil)
-
-        UIView.animate(withDuration: RevealTiming.crossFadeDuration, delay: RevealTiming.crossFadeDelay, options: [.curveEaseInOut, .allowUserInteraction], animations: {
-            chatVC.view.alpha = 1
-            self.timelineCanvas.alpha = 0
-        }, completion: nil)
-
-        UIView.animate(withDuration: RevealTiming.blurFadeOutDuration, delay: RevealTiming.blurDwellDelay, options: [.curveEaseInOut, .allowUserInteraction], animations: {
-            blur.alpha = 0
-        }, completion: { _ in
-            blur.removeFromSuperview()
-            if self.revealBlurOverlay === blur { self.revealBlurOverlay = nil }
-        })
     }
 }

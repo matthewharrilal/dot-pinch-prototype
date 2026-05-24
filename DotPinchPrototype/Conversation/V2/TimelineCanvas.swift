@@ -380,6 +380,7 @@ final class TimelineCanvas: UIView, UIGestureRecognizerDelegate {
             pendingRevealWorkItem?.cancel()
             pendingRevealWorkItem = nil
             updateNeighborTranslations()
+            pinchRecognizer.isEnabled = true
         }
     }
 
@@ -1237,6 +1238,7 @@ final class TimelineCanvas: UIView, UIGestureRecognizerDelegate {
         setActiveCellIndex(k)
         contentHost.bringSubviewToFront(activeCell)
         activeCell.morphInProgress = true
+        pinchRecognizer.isEnabled = false
 
         let now = CACurrentMediaTime()
         let windupDuration: CFTimeInterval = MorphTiming.windupDuration
@@ -1379,6 +1381,7 @@ final class TimelineCanvas: UIView, UIGestureRecognizerDelegate {
             // so the final state equals identity.
             contentHost.layer.transform = CATransform3DIdentity
         }
+        pinchRecognizer.isEnabled = false
     }
 
     /// Internal chat-rest path. Called by `animateCameraToChatRest` (tap)
@@ -1394,6 +1397,7 @@ final class TimelineCanvas: UIView, UIGestureRecognizerDelegate {
         guard let activeCell = instantiatedCells[k],
               let heightC = activeCell.heightConstraint else { return }
         contentHost.bringSubviewToFront(activeCell)
+        pinchRecognizer.isEnabled = false
 
         let naturalH = activeCell.naturalHeight
         guard naturalH > 0, bounds.height > 0 else { return }

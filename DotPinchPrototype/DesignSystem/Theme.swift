@@ -37,7 +37,7 @@ enum Theme {
     // MARK: - Typography
 
     enum Typography {
-        static let bubbleSender    = UIFont.systemFont(ofSize: 12, weight: .semibold)
+        static let bubbleRole      = UIFont.systemFont(ofSize: 12, weight: .semibold)
         static let bubbleBody      = UIFont.systemFont(ofSize: 17, weight: .regular)
         static let bubbleTime      = UIFont.systemFont(ofSize: 12, weight: .regular)
         static let composerHint    = UIFont.systemFont(ofSize: 16, weight: .regular)

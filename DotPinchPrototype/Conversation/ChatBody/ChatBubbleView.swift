@@ -20,13 +20,13 @@ final class ChatBubbleView: UIView {
         translatesAutoresizingMaskIntoConstraints = false
         backgroundColor = .clear
 
-        let senderLabel = UILabel()
-        senderLabel.text = Self.displayName(for: message.role)
-        senderLabel.font = Theme.Typography.bubbleSender
-        senderLabel.textColor = Theme.Text.secondary
-        senderLabel.numberOfLines = 1
-        senderLabel.translatesAutoresizingMaskIntoConstraints = false
-        addSubview(senderLabel)
+        let roleLabel = UILabel()
+        roleLabel.text = Self.displayName(for: message.role)
+        roleLabel.font = Theme.Typography.bubbleRole
+        roleLabel.textColor = Theme.Text.secondary
+        roleLabel.numberOfLines = 1
+        roleLabel.translatesAutoresizingMaskIntoConstraints = false
+        addSubview(roleLabel)
 
         let bodyLabel = UILabel()
         bodyLabel.text = message.content
@@ -46,11 +46,11 @@ final class ChatBubbleView: UIView {
         addSubview(timeLabel)
 
         NSLayoutConstraint.activate([
-            senderLabel.topAnchor.constraint(equalTo: topAnchor, constant: 8),
-            senderLabel.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 4),
-            senderLabel.trailingAnchor.constraint(lessThanOrEqualTo: trailingAnchor, constant: -4),
+            roleLabel.topAnchor.constraint(equalTo: topAnchor, constant: 8),
+            roleLabel.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 4),
+            roleLabel.trailingAnchor.constraint(lessThanOrEqualTo: trailingAnchor, constant: -4),
 
-            bodyLabel.topAnchor.constraint(equalTo: senderLabel.bottomAnchor, constant: 4),
+            bodyLabel.topAnchor.constraint(equalTo: roleLabel.bottomAnchor, constant: 4),
             bodyLabel.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 4),
             bodyLabel.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -4),
 

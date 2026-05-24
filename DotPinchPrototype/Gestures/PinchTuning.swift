@@ -1,6 +1,7 @@
-// Gesture-physics constants for the pinch-to-memory mechanic. Describes HOW
-// gesture progress maps to spring physics — visual-timing lives in
-// Conversation/MorphTiming.swift.
+// PinchTuning — gesture-physics constants (spring damping, response,
+// per-direction damping). For MORPH visual-timing constants (windup,
+// curves, lift magnitudes), see MorphTiming (added in Phase 1 Task 1.2)
+// — distinct file because morph-timing is choreography, not gesture-physics.
 
 import CoreGraphics
 import Foundation

@@ -16,7 +16,7 @@ final class WaveR12OptionsACVerification: XCTestCase {
     private var retainedDataSource: R12Stub?
 
     private func makeCanvas() -> TimelineCanvas {
-        let canvas = TimelineCanvas(frame: viewport)
+        let canvas = TimelineCanvas(controller: AnimationController(), frame: viewport)
         let ds = R12Stub(count: 5, cellHeight: cellHeight)
         retainedDataSource = ds
         canvas.dataSource = ds

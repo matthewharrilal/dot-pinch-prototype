@@ -82,7 +82,7 @@ final class TimelineCanvas: UIView, UIGestureRecognizerDelegate {
 
     // MARK: - Camera animation
 
-    let animationController = AnimationController()
+    let animationController: AnimationController
 
     /// Fires when the tap-to-chat morph reaches its settled state.
     var onMorphRevealReady: ((Int) -> Void)?
@@ -153,13 +153,13 @@ final class TimelineCanvas: UIView, UIGestureRecognizerDelegate {
 
     // MARK: - Init
 
-    override init(frame: CGRect) {
+    init(controller: AnimationController, frame: CGRect = .zero) {
+        self.animationController = controller
         super.init(frame: frame)
         installViewHierarchy()
         installPageGradient()
         installPanRecognizer()
         installPinchRecognizer()
-        // CameraAnimator references self — construct after super.init.
         cameraAnimator = CameraAnimator(canvas: self, controller: animationController)
         extensionAnimator = SpringAnimator<CGFloat>(
             controller: animationController,
@@ -176,7 +176,7 @@ final class TimelineCanvas: UIView, UIGestureRecognizerDelegate {
 
     @available(*, unavailable)
     required init?(coder: NSCoder) {
-        fatalError("TimelineCanvas does not support NSCoder decoding")
+        fatalError("Use init(controller:frame:)")
     }
 
     deinit {

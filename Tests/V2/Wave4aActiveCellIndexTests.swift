@@ -11,7 +11,7 @@ import XCTest
 final class Wave4aActiveCellIndexTests: XCTestCase {
 
     func testActiveCellIndexSetByChatRestAndClearedByCellRest() {
-        let canvas = TimelineCanvas(frame: CGRect(x: 0, y: 0, width: 390, height: 844))
+        let canvas = TimelineCanvas(controller: AnimationController(), frame: CGRect(x: 0, y: 0, width: 390, height: 844))
         let dataSource = StubDataSource(count: 5, cellHeight: 200)
         canvas.dataSource = dataSource
         canvas.reloadData()

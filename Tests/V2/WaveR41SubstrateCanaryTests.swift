@@ -14,7 +14,7 @@ final class WaveR41SubstrateCanaryTests: XCTestCase {
     private let viewport = CGRect(x: 0, y: 0, width: 390, height: 844)
 
     func testCameraAndExtensionAnimatorsShareSameAnimationController() {
-        let canvas = TimelineCanvas(frame: viewport)
+        let canvas = TimelineCanvas(controller: AnimationController(), frame: viewport)
 
         let cameraController = canvas.cameraAnimator.animationControllerIdentity
         let extensionController = canvas.extensionAnimator.animationControllerIdentity

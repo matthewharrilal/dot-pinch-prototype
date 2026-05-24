@@ -17,7 +17,7 @@ final class WaveR34BoundaryEmergenceTests: XCTestCase {
     private var retainedDataSource: R34Stub?
 
     private func makeCanvas() -> TimelineCanvas {
-        let canvas = TimelineCanvas(frame: viewport)
+        let canvas = TimelineCanvas(controller: AnimationController(), frame: viewport)
         let ds = R34Stub(count: 5, cellHeight: cellHeight)
         retainedDataSource = ds
         canvas.dataSource = ds

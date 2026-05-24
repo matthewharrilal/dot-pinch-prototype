@@ -17,7 +17,7 @@ final class WaveR35HitTestRegionsTests: XCTestCase {
     private var retainedDataSource: R35Stub?
 
     private func makeCanvas() -> TimelineCanvas {
-        let canvas = TimelineCanvas(frame: viewport)
+        let canvas = TimelineCanvas(controller: AnimationController(), frame: viewport)
         let ds = R35Stub(count: 5, cellHeight: cellHeight)
         retainedDataSource = ds
         canvas.dataSource = ds

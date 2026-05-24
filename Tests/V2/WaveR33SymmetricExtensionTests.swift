@@ -17,7 +17,7 @@ final class WaveR33SymmetricExtensionTests: XCTestCase {
     private var retainedDataSource: R33Stub?
 
     private func makeCanvas() -> TimelineCanvas {
-        let canvas = TimelineCanvas(frame: viewport)
+        let canvas = TimelineCanvas(controller: AnimationController(), frame: viewport)
         let ds = R33Stub(count: 5, cellHeight: cellHeight)
         retainedDataSource = ds
         canvas.dataSource = ds

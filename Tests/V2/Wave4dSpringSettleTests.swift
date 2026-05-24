@@ -16,7 +16,7 @@ final class Wave4dSpringSettleTests: XCTestCase {
     private var retainedDataSource: Wave4dStubDataSource?
 
     private func makeCanvas() -> TimelineCanvas {
-        let canvas = TimelineCanvas(frame: viewport)
+        let canvas = TimelineCanvas(controller: AnimationController(), frame: viewport)
         let ds = Wave4dStubDataSource(count: 5, cellHeight: cellHeight)
         retainedDataSource = ds
         canvas.dataSource = ds

@@ -9,6 +9,7 @@ final class V2RootViewController: UIViewController {
 
     private let store: ConversationStore
     private let adapter: TimelineDataSourceAdapter
+    private let animationController: AnimationController
     private let timelineCanvas: TimelineCanvas
     private var activeChatVC: ChatViewController?
     private var revealBlurOverlay: UIVisualEffectView?
@@ -22,7 +23,9 @@ final class V2RootViewController: UIViewController {
             store: self.store,
             naturalCellHeight: CellLayoutTuning.naturalCellHeight
         )
-        self.timelineCanvas = TimelineCanvas()
+        let controller = AnimationController()
+        self.animationController = controller
+        self.timelineCanvas = TimelineCanvas(controller: controller)
         super.init(nibName: nil, bundle: nil)
     }
 

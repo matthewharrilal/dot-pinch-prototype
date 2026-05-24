@@ -36,7 +36,7 @@ final class WaveR43TranslationVelocityCaptureTests: XCTestCase {
     private var retainedDataSource: R43Stub?
 
     private func makeCanvas() -> TimelineCanvas {
-        let canvas = TimelineCanvas(frame: viewport)
+        let canvas = TimelineCanvas(controller: AnimationController(), frame: viewport)
         let ds = R43Stub(count: 5, cellHeight: 200)
         retainedDataSource = ds
         canvas.dataSource = ds

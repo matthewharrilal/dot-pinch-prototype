@@ -39,7 +39,7 @@ final class WaveR44PerDirectionProfileTests: XCTestCase {
     private var retainedDataSource: R44Stub?
 
     private func makeCanvas() -> TimelineCanvas {
-        let canvas = TimelineCanvas(frame: viewport)
+        let canvas = TimelineCanvas(controller: AnimationController(), frame: viewport)
         let ds = R44Stub(count: 5, cellHeight: 200)
         retainedDataSource = ds
         canvas.dataSource = ds

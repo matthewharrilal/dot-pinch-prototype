@@ -17,7 +17,7 @@ final class Wave4cZOrderTests: XCTestCase {
     private var retainedDataSource: Wave4cStubDataSource?
 
     private func makeCanvas() -> TimelineCanvas {
-        let canvas = TimelineCanvas(frame: viewport)
+        let canvas = TimelineCanvas(controller: AnimationController(), frame: viewport)
         let ds = Wave4cStubDataSource(count: 5, cellHeight: cellHeight)
         retainedDataSource = ds
         canvas.dataSource = ds

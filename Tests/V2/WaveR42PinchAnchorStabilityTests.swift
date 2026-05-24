@@ -41,7 +41,7 @@ final class WaveR42PinchAnchorStabilityTests: XCTestCase {
     private var retainedDataSource: R42Stub?
 
     private func makeCanvas(cellCount: Int = 5, cellHeight: CGFloat = 200) -> TimelineCanvas {
-        let canvas = TimelineCanvas(frame: viewport)
+        let canvas = TimelineCanvas(controller: AnimationController(), frame: viewport)
         let ds = R42Stub(count: cellCount, cellHeight: cellHeight)
         retainedDataSource = ds
         canvas.dataSource = ds

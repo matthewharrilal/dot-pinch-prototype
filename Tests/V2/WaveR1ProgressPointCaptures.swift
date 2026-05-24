@@ -18,7 +18,7 @@ final class WaveR1ProgressPointCaptures: XCTestCase {
 
     private func makeCanvas() -> (TimelineCanvas, UIWindow) {
         let window = UIWindow(frame: viewport)
-        let canvas = TimelineCanvas(frame: viewport)
+        let canvas = TimelineCanvas(controller: AnimationController(), frame: viewport)
         let ds = WaveR1StubDataSource(count: 5, cellHeight: cellHeight)
         retainedDataSource = ds
         canvas.dataSource = ds

@@ -27,7 +27,7 @@ final class PageGradientFixTests: XCTestCase {
 
     private func makeCanvas() -> TimelineCanvas {
         let window = UIWindow(frame: CGRect(x: 0, y: 0, width: 390, height: 844))
-        let canvas = TimelineCanvas(frame: window.bounds)
+        let canvas = TimelineCanvas(controller: AnimationController(), frame: window.bounds)
         let ds = FiveCellsDS()
         canvas.dataSource = ds
         window.addSubview(canvas)

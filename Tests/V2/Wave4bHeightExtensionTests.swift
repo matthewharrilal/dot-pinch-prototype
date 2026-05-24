@@ -17,7 +17,7 @@ final class Wave4bHeightExtensionTests: XCTestCase {
     private let cellCount = 5
 
     private func makeCanvas() -> (TimelineCanvas, Wave4bStubDataSource) {
-        let canvas = TimelineCanvas(frame: viewport)
+        let canvas = TimelineCanvas(controller: AnimationController(), frame: viewport)
         let ds = Wave4bStubDataSource(count: cellCount, cellHeight: cellHeight)
         canvas.dataSource = ds
         canvas.reloadData()

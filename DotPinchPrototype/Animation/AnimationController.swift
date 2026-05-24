@@ -9,6 +9,7 @@ import UIKit
 
 /// Weak-proxy target for the CADisplayLink. Breaks the runloop → displayLink
 /// → target retain cycle so `AnimationController.deinit` actually fires.
+@MainActor
 private final class DisplayLinkProxy {
     weak var controller: AnimationController?
 
@@ -21,6 +22,7 @@ private final class DisplayLinkProxy {
     }
 }
 
+@MainActor
 public final class AnimationController {
 
     private var animations: [UUID: AnimatorProviding] = [:]

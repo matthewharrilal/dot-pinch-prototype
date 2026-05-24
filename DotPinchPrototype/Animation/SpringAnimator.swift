@@ -7,6 +7,7 @@ import Foundation
 import QuartzCore
 
 /// Type-erased animator handle so AnimationController can hold animators of varied T.
+@MainActor
 protocol AnimatorProviding: AnyObject {
     var id: UUID { get }
     var state: AnimatorState { get }
@@ -20,6 +21,7 @@ public enum AnimatorState: Equatable {
     case ended
 }
 
+@MainActor
 public final class SpringAnimator<T: SpringInterpolatable>: AnimatorProviding where T.ValueType == T {
 
     // MARK: - Events

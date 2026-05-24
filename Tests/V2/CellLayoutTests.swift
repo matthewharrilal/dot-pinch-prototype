@@ -45,7 +45,7 @@ final class CellLayoutTests: XCTestCase {
 
     /// Make a canvas with a uniform data source and call reloadData.
     private func makeCanvas(count: Int, height: CGFloat = 200) -> (TimelineCanvas, UniformDS) {
-        let canvas = TimelineCanvas(frame: CGRect(x: 0, y: 0, width: 390, height: 844))
+        let canvas = TimelineCanvas(controller: AnimationController(), frame: CGRect(x: 0, y: 0, width: 390, height: 844))
         let ds = UniformDS(count: count, height: height)
         canvas.dataSource = ds
         canvas.reloadData()
@@ -103,7 +103,7 @@ final class CellLayoutTests: XCTestCase {
 
     /// Variable heights: [200, 300, 200] → tops at 0, 224, 548.
     func testPageFrameVariableHeights() {
-        let canvas = TimelineCanvas(frame: CGRect(x: 0, y: 0, width: 390, height: 844))
+        let canvas = TimelineCanvas(controller: AnimationController(), frame: CGRect(x: 0, y: 0, width: 390, height: 844))
         let ds = VariableDS([200, 300, 200])
         canvas.dataSource = ds
         canvas.reloadData()
@@ -188,7 +188,7 @@ final class CellLayoutTests: XCTestCase {
     // MARK: - Memoization invalidation
 
     func testMemoizationInvalidatesOnReloadData() {
-        let canvas = TimelineCanvas(frame: CGRect(x: 0, y: 0, width: 390, height: 844))
+        let canvas = TimelineCanvas(controller: AnimationController(), frame: CGRect(x: 0, y: 0, width: 390, height: 844))
         let ds1 = UniformDS(count: 5, height: 200)
         canvas.dataSource = ds1
         canvas.reloadData()

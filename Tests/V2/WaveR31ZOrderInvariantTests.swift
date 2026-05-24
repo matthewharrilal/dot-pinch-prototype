@@ -16,7 +16,7 @@ final class WaveR31ZOrderInvariantTests: XCTestCase {
     private var retainedDataSource: R31Stub?
 
     private func makeCanvas() -> TimelineCanvas {
-        let canvas = TimelineCanvas(frame: viewport)
+        let canvas = TimelineCanvas(controller: AnimationController(), frame: viewport)
         let ds = R31Stub(count: 5, cellHeight: cellHeight)
         retainedDataSource = ds
         canvas.dataSource = ds

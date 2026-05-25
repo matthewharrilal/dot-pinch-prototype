@@ -9302,6 +9302,38 @@ These are blocking concerns for T4 implementation.
 | E6 | Forward direction touch policy: any §43 changes propagate to forward, or strictly reverse-only? | Strictly reverse-only per user's prior answer; revisit if width/spacing changes inevitably touch forward |
 
 
+### §45.14 — Execution corrections (applied 2026-05-25)
+
+**AXIS-INVERSION CORRECTION on §45.4 + §44.16 step 2a.** The trace agent for T2 recommended applying §43's gesture-progress windows directly to AlphaCurve constants. This is INCORRECT: `CellView.computeProgress` (CV:368-380) returns `progress = (extensionFactor - 1)/chatRestRange` where progress=0 means cell-rest (heightConstraint=naturalH) and progress=1 means chat-rest (heightConstraint=viewport.height). §43's gesture-progress is OPPOSITE: §43.p=0 is chat-rest and §43.p=1 is cell-rest. The mapping is `CellView.progress = 1 - §43.p`.
+
+Correct AlphaCurve values for CellView.progress space (verified against the applier formulas in CellView.swift:386, 393, 409):
+
+| Constant | Old | Trace recommended (WRONG) | CORRECT |
+|---|---|---|---|
+| `cellRestChromeIn` | 0.05 | 0.43 | **0.33** |
+| `cellRestChromeFull` | 0.30 | 0.67 | **0.57** |
+| `chatRestAffordanceIn` | 0.05 | 0.43 | **0.33** |
+| `chatRestAffordanceFull` | 0.30 | 0.67 | **0.57** |
+| `chatContentAlphaIn` | 0.05 | 0.0 | **0.55** |
+| `chatContentAlphaFull` | 0.35 | 0.45 | **1.0** |
+
+**Verification math:**
+- §43.2 cell-rest chrome appears at §43.p ∈ [0.43, 0.67] → CellView.progress ∈ [1-0.67, 1-0.43] = [0.33, 0.57]
+  - `applyCellRestChromeAlphas` uses `1 - smoothstep(In, Full, progress)`. At progress=0.33 (matches §43.p=0.67, cell-rest landing): alpha=1 ✓. At progress=0.57 (matches §43.p=0.43): alpha=0 ✓.
+- §43.1 chat content fades [0, 0.45] in §43.p → CellView.progress fades over [1, 0.55]
+  - `applyChatContentDistanceFade` uses `smoothstep(In, Full, progress)`. At progress=1 (chat-rest): alpha=1 ✓. At progress=0.55 (matches §43.p=0.45): alpha=0 ✓.
+
+**Methodology lesson:** the trace agent worked from §43's prose without verifying the CellView.progress axis direction in CellView.swift:368-380. The user's `feedback_verify_dont_assume.md` memory caught this exact pattern again — recommendations from sub-agents are HYPOTHESES, not facts. Applied correction during execution. Values in `DotPinchPrototype/DesignSystem/AlphaCurve.swift` reflect the CORRECT mapping.
+
+**Second axis-inversion correction (listSpacingExtension):** §45.7 recommended `listSpacingExtension = 1 - currentCanvasProgress` derived from `currentCanvasProgress` at TC:310. The trace had the same axis inversion error. Per §43.5 and §44.7's semantic spec (0=resting, 1=expanded), the CORRECT formula is `listSpacingExtension = currentCanvasProgress` directly:
+- At `currentCanvasProgress=1` (chat-rest): listSpacingExtension = 1 (expanded — matches §43.5's 120px peak at mid-gesture)
+- At `currentCanvasProgress=0` (cell-rest): listSpacingExtension = 0 (resting — matches §43.5's 21px final value)
+
+Applied in `TimelineCanvas.swift` as a computed property right after `currentCanvasProgress`.
+
+**§45.3 simplification — `extensionProgress` skipped as redundant.** The §45.3 recommendation was to add `extensionProgress` (geometry-derived, §43.p semantics: 0=chat-rest, 1=cell-rest) on TimelineCanvas. But `currentCanvasProgress` (TC:310) already provides the canvas-level signal in OPPOSITE semantics (CellView.progress style: 0=cell-rest, 1=chat-rest). Where §43.p semantics are needed, callers use `1 - currentCanvasProgress`. Adding a second mirror-image property would create two near-identical accessors and confusion. Decision: skip §45.3's extensionProgress; use `1 - currentCanvasProgress` at call sites. The `CellView.computeProgress` per-cell derivation also stays (per §45.3 — neighbors must use their own progress, not the active cell's).
+
+
 
 
 

@@ -318,6 +318,13 @@ final class TimelineCanvas: UIView {
         return min(1.0, max(0.0, (extensionFactor - 1.0) / chatRestRange))
     }
 
+    /// Inter-cell spacing extension ∈ [0, 1]. 0 = resting (Self.cellSpacing);
+    /// 1 = expanded (~5× resting per §43.5 empirical peak at gesture p≈0.62).
+    /// Tracks currentCanvasProgress: chat-rest → 1 (expanded); cell-rest → 0 (resting).
+    var listSpacingExtension: CGFloat {
+        currentCanvasProgress
+    }
+
     /// If no external `setCamera` write has occurred yet, re-anchor to the
     /// initial scroll position once bounds become valid.
     private func anchorToCellRestIfAtInitialState() {
@@ -1616,13 +1623,15 @@ final class TimelineCanvas: UIView {
     }
 
     func applyMorphTickCameraWrite(translation: CGFloat, cell: CellView) {
-        camera = Camera(translation: translation)
-        applyCameraTransform()
-        updateVisibleCells()
-        cell.setCamera(camera, viewport: bounds)
-        updateNeighborTranslations()
-        updateEdgeMaskAlphas()
-        onCameraChanged?(camera, bounds)
+        CATransaction.withSuppressedActions {
+            camera = Camera(translation: translation)
+            applyCameraTransform()
+            updateVisibleCells()
+            cell.setCamera(camera, viewport: bounds)
+            updateNeighborTranslations()
+            updateEdgeMaskAlphas()
+            onCameraChanged?(camera, bounds)
+        }
     }
 
     // MARK: - Cell-rest spring coordination
@@ -1743,6 +1752,11 @@ final class TimelineCanvas: UIView {
         let extensionValue = extensionAnimator.value ?? 0
         let extensionAtTarget = abs(extensionValue - cell.naturalHeight) < 1.0
         if cameraAtTarget && extensionAtTarget {
+            // Clear stale first-responder flag — the keyboard was dismissed at
+            // gesture begin via endEditing(true) but composerIsFirstResponder
+            // stays true until cleared. Without this, a subsequent forward
+            // re-engagement reads the stale true and pops the keyboard unbidden.
+            cell.stateController?.composerIsFirstResponder = false
             setActiveCellIndex(nil)
             restoreNaturalSiblingOrder()
         }

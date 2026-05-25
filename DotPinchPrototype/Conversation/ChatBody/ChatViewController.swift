@@ -11,9 +11,42 @@ final class ChatViewController: UIViewController {
     private let scrollView = UIScrollView()
     private let bubbleStack = UIStackView()
     private let composerContainer = UIView()
-    private let composerTextField = UITextField()
+    let composerTextField = UITextField()
 
     private var conversation: Conversation?
+
+    // MARK: - Transient state snapshot (capture/apply for handoff)
+
+    /// Snapshot of chatVC state that must survive the handoff to cell.chatContent.
+    /// All fields `let` — a snapshot is a moment-in-time; apply writes them
+    /// into the target. P9.2 Sendable; P19.5 immutable.
+    struct TransientStateSnapshot: Sendable {
+        let composerText: String
+        let scrollOffset: CGPoint
+        let composerWasFirstResponder: Bool
+        let selectedTextRange: UITextRange?
+    }
+
+    /// Capture the current transient state for handoff transfer.
+    /// P19.1 pure (no side effects).
+    func captureTransientState() -> TransientStateSnapshot {
+        TransientStateSnapshot(
+            composerText: composerTextField.text ?? "",
+            scrollOffset: scrollView.contentOffset,
+            composerWasFirstResponder: composerTextField.isFirstResponder,
+            selectedTextRange: composerTextField.selectedTextRange
+        )
+    }
+
+    /// Apply a snapshot to this chatVC at install time (round-trip restoration).
+    /// scrollOffset is deferred to next runloop tick because scrollView.contentSize
+    /// depends on layout completing.
+    func bindTransientState(_ snapshot: TransientStateSnapshot) {
+        composerTextField.text = snapshot.composerText
+        DispatchQueue.main.async { [weak self] in
+            self?.scrollView.contentOffset = snapshot.scrollOffset
+        }
+    }
 
     // MARK: - Lifecycle
 

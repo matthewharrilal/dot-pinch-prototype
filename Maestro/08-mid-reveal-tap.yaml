@@ -1,0 +1,18 @@
+appId: com.matthewharrilal.dotpinchprototype
+name: "08-mid-reveal-tap — tap A, during 2.8s reveal try to tap B; should no-op"
+---
+- launchApp:
+    clearState: false
+- waitForAnimationToEnd:
+    timeout: 3000
+- tapOn:
+    point: 50%, 30%
+# Don't wait for the reveal to finish. Tap a different point during the reveal.
+# isPresenting guard should block the second tap from re-firing the cane curve.
+- tapOn:
+    point: 50%, 70%
+- waitForAnimationToEnd:
+    timeout: 5000
+# Should arrive at chat-rest cleanly with A's content (not crashed; not re-fired)
+- assertVisible: "Share with Dot…"
+- takeScreenshot: 08-mid-reveal-tap-result

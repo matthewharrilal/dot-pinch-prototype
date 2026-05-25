@@ -1034,6 +1034,29 @@ final class TimelineCanvas: UIView {
         let anchorCellIdx = cellIndex(atPagePoint: anchorPage)
         setActiveCellIndex(anchorCellIdx)
 
+        // §36.3.1 defensive chrome reset: if a prior pinch-commit's chrome
+        // fades or centerLabelOpacity CABasicAnimation are still attached,
+        // cancel them and reset alphas to cell-rest values BEFORE the new
+        // pinch's setCamera ticks drive alphas based on progress. Without
+        // this, chrome could be stuck at alpha=0 if the prior pinch-commit
+        // was interrupted mid-fade.
+        if let idx = anchorCellIdx, let activeCell = instantiatedCells[idx] {
+            CATransaction.withSuppressedActions {
+                activeCell.dateLabel.layer.removeAllAnimations()
+                activeCell.topicSummaryLabel.layer.removeAllAnimations()
+                activeCell.todayLabel.layer.removeAllAnimations()
+                activeCell.pinchGlyph.layer.removeAllAnimations()
+                activeCell.chatRestCenterLabel.layer.removeAllAnimations()
+
+                activeCell.dateLabel.alpha = 1
+                activeCell.topicSummaryLabel.alpha = 1
+                activeCell.todayLabel.alpha = 1
+                activeCell.pinchGlyph.alpha = 1
+                activeCell.chatRestCenterLabel.alpha = 0
+                activeCell.chatRestAffordance.alpha = 0
+            }
+        }
+
         pinchState.anchorPageY = anchorPage.y
 
         // Unconditional overwrite so a prior gesture's stale state cannot leak in.
@@ -1154,6 +1177,9 @@ final class TimelineCanvas: UIView {
                     commit: commit
                 )
             }
+        } else if commit == .pinchToCells && Self.reverseCinematographyEnabled {
+            // §24.4 commit-driven reverse cinematography (Phase 11, opt-in).
+            playPinchToCellsMorph(forCellAt: activeIdx, carriedExtensionVelocity: extensionVel)
         } else {
             springToCellRest(
                 carriedExtensionVelocity: extensionVel,
@@ -1369,6 +1395,19 @@ final class TimelineCanvas: UIView {
         let cameraTarget = activeCell.frame.midY
         let extensionTarget = naturalH * chatRestFactor
 
+        // §36.3.1 — pinch-commit chrome symmetry with tap-forward. Without
+        // this call, pinch-commit forward leaves cell-rest chrome at alpha=1
+        // throughout the 1.2s morph AND no day-marker emerges (only chatVC's
+        // headerLabel appears via crossFade). Calling performMorphChromeTransition
+        // here mirrors animateCameraToChatRest's call at TC:1307 with
+        // masterTimerDuration (1.2s) as the centerLabelDuration.
+        let chromeProfile = CellView.MorphChromeProfile(
+            counterScale: 1.0 / chatRestFactor,
+            centerLabelDuration: MorphTiming.masterTimerDuration,
+            centerLabelBeginTime: CACurrentMediaTime()
+        )
+        activeCell.performMorphChromeTransition(profile: chromeProfile)
+
         let profile = springProfile(for: .tapToChat)
         extensionAnimator.spring = profile
         extensionAnimator.completion = nil
@@ -1448,6 +1487,134 @@ final class TimelineCanvas: UIView {
         pendingRevealWorkItem = nil
     }
 
+    // MARK: - Normalize to chat-rest (post-cane-curve / post-pinch-commit cleanup)
+
+    /// Reset canvas to the clean chat-rest end-state in the canvas.alpha=0 window.
+    /// Runs once between crossFade completion and blurFadeOut completion.
+    /// Idempotent (P19.3).
+    ///
+    /// Path differences handled by single normalize:
+    /// - Tap path: removes 4 held cane-curve CABasicAnimations; resets transform;
+    ///   updates camera to center the cell (cane curve never updated camera).
+    /// - Pinch-commit path: most steps are no-ops because MorphChoreographer
+    ///   already left state clean. The setCamera call refreshes chrome alphas
+    ///   that pinch-commit's morphInProgress gate prevented setCamera from
+    ///   updating during the morph.
+    func normalizeToChatRest(activeCellIndex: Int) {
+        guard let cell = instantiatedCells[activeCellIndex] else {
+            assertionFailure("normalizeToChatRest called with invalid activeCellIndex \(activeCellIndex)")
+            return
+        }
+
+        CATransaction.withSuppressedActions {
+            clearCaneCurveAnimations()
+            resetContentHostTransform()
+            clearChatRestCenterLabelTransientState(on: cell)
+            extendCellToChatRest(cell: cell)
+        }
+        // setCamera wraps in its own suppressed CATransaction; calling OUTSIDE
+        // the inner block avoids nested transactions.
+        centerCameraOnActiveCell(cell: cell)
+    }
+
+    // MARK: - Normalize helpers (P11.1 SRP per helper)
+
+    /// Remove the 4 held cane-curve CABasicAnimations from contentHost.layer.
+    /// No-op for pinch-commit path (MorphChoreographer doesn't attach these).
+    private func clearCaneCurveAnimations() {
+        contentHost.layer.removeAnimation(forKey: MorphAnimationKey.windupScale.rawValue)
+        contentHost.layer.removeAnimation(forKey: MorphAnimationKey.zoomScale.rawValue)
+        contentHost.layer.removeAnimation(forKey: MorphAnimationKey.windupTranslate.rawValue)
+        contentHost.layer.removeAnimation(forKey: MorphAnimationKey.morphCentering.rawValue)
+    }
+
+    /// Reset contentHost.layer.transform to identity.
+    /// Tap path: undoes the held cane-curve transform composition.
+    /// Pinch-commit path: idempotent (already identity).
+    private func resetContentHostTransform() {
+        contentHost.layer.transform = CATransform3DIdentity
+    }
+
+    /// Clear chatRestCenterLabel's transient state from a forward morph.
+    private func clearChatRestCenterLabelTransientState(on cell: CellView) {
+        cell.chatRestCenterLabel.layer.removeAnimation(forKey: MorphAnimationKey.centerLabelOpacity.rawValue)
+        cell.chatRestCenterLabel.transform = .identity
+        cell.chatRestCenterLabel.alpha = 0
+    }
+
+    /// Extend cell.heightConstraint to chat-rest extension (bounds.height).
+    /// Tap path: corrects from naturalH=200 baseline (cane curve doesn't extend).
+    /// Pinch-commit path: no-op (heightConstraint already at chatRestExt).
+    private func extendCellToChatRest(cell: CellView) {
+        cell.heightConstraint?.constant = bounds.height
+        contentHost.layoutIfNeeded()
+    }
+
+    /// Center the canvas camera on the active cell (per §16.5 camera position fix).
+    /// Refreshes chrome alphas on the active cell at progress=1 (the §16.6
+    /// pinch-commit chrome fix).
+    ///
+    /// IMPORTANT: bypasses setCamera deliberately. setCamera's
+    /// updateVisibleCells call would trigger installLayout on every neighbor,
+    /// which schedules the centerY-anchored DEBUG assertion (CV:248-253) via
+    /// dispatch_async. By the time the async assert fires, updateNeighborTranslations
+    /// has applied followActive transforms of ±half-growth (±322pt at chat-rest
+    /// extension), so frame.midY ≠ naturalCenterY and the assert fails. The
+    /// assertion isn't wrong; it just doesn't account for transforms. Avoiding
+    /// updateVisibleCells here side-steps the crash without modifying the
+    /// pre-existing invariant check.
+    private func centerCameraOnActiveCell(cell: CellView) {
+        camera = Camera(translation: cell.frame.midY)
+        hasExternalCameraWrite = true
+        CATransaction.withSuppressedActions {
+            applyCameraTransform()
+            // Refresh chrome alphas on the active cell at progress=1 (chat-rest).
+            cell.setCamera(camera, viewport: bounds)
+            updateNeighborTranslations()
+            updateEdgeMaskAlphas()
+        }
+        onCameraChanged?(camera, bounds)
+    }
+
+    // MARK: - Memory pressure (§35.3.1)
+
+    /// Respond to memory pressure by aggressively evicting non-active keyed-pool
+    /// cells and their attached chatContent containers. Active cell is protected.
+    /// Currently-instantiated non-active cells are KEPT.
+    /// P19.3 idempotent.
+    func flushPoolForMemoryPressure() {
+        let activeID = activeConversationIDForFlush()
+        let evictableIDs = poolOrder.filter { $0 != activeID }
+
+        for id in evictableIDs {
+            evictKeyedPoolEntry(id: id)
+        }
+
+        evictUnboundCellPoolEntries()
+    }
+
+    private func activeConversationIDForFlush() -> UUID? {
+        activeCellIndex.flatMap { instantiatedCells[$0]?.activeConversationID }
+    }
+
+    private func evictKeyedPoolEntry(id: UUID) {
+        guard let cell = cellPoolByConversationID.removeValue(forKey: id) else { return }
+
+        cell.endEditing(true)
+        cell.teardownChatContentForMemoryPressure()
+
+        if let poolIdx = cellPool.firstIndex(where: { $0 === cell }) {
+            cellPool.remove(at: poolIdx)
+        }
+        if let orderIdx = poolOrder.firstIndex(of: id) {
+            poolOrder.remove(at: orderIdx)
+        }
+    }
+
+    private func evictUnboundCellPoolEntries() {
+        cellPool.removeAll { $0.activeConversationID == nil }
+    }
+
     func applyMorphTickCameraWrite(translation: CGFloat, cell: CellView) {
         camera = Camera(translation: translation)
         applyCameraTransform()
@@ -1459,6 +1626,63 @@ final class TimelineCanvas: UIView {
     }
 
     // MARK: - Cell-rest spring coordination
+
+    // MARK: - Reverse cinematography (§24 / Phase 11)
+
+    /// Feature flag for commit-driven reverse cinematography per §24.4.
+    /// Default: false (gesture-driven shrink + spring is the V1 default per D14).
+    /// When true, handlePinchEnded routes `.pinchToCells` to playPinchToCellsMorph
+    /// instead of springToCellRest, mirroring forward pinch-commit's MorphChoreographer.
+    static var reverseCinematographyEnabled: Bool = false
+
+    /// Commit-driven reverse cinematography (§24.4). Engages MorphChoreographer
+    /// with an INVERSE choreography: cell collapses from chat-rest to cell-rest,
+    /// camera animates from activeCell.frame.midY to lastCellRestScrollY origin,
+    /// contentHost.layer.transform does a sin-bell Y/Z arc.
+    ///
+    /// At completion: chrome alphas refresh via setCamera (gate released because
+    /// morphChoreographer.isRunning becomes false). activeCellIndex clears via
+    /// setActiveCellIndex(nil); restoreNaturalSiblingOrder runs.
+    fileprivate func playPinchToCellsMorph(
+        forCellAt k: Int,
+        carriedExtensionVelocity: CGFloat
+    ) {
+        guard let activeCell = instantiatedCells[k],
+              let heightC = activeCell.heightConstraint else { return }
+
+        let naturalH = activeCell.naturalHeight
+        guard naturalH > 0, bounds.height > 0 else { return }
+        let chatRestFactor = bounds.height / naturalH
+
+        let cameraStart = camera.translation
+        let cameraEnd = lastCellRestScrollY + bounds.height / 2
+
+        let choreo = MorphChoreography(
+            activeCellIndex: k,
+            startCameraY: cameraStart,
+            endCameraY: cameraEnd,
+            startHeight: heightC.constant,
+            endHeight: naturalH,
+            unifiedArcYMagnitude: MorphTiming.unifiedArcYMagnitude,
+            unifiedArcZMagnitude: MorphTiming.unifiedArcZMagnitude,
+            duration: MorphTiming.masterTimerDuration,
+            chatRestFactor: chatRestFactor
+        )
+
+        morphChoreographer.engage(choreo) { [weak self] in
+            guard let self else { return }
+            CATransaction.withSuppressedActions {
+                self.contentHost.layer.transform = CATransform3DIdentity
+            }
+            self.updateNeighborTranslations()
+            self.updateEdgeMaskAlphas()
+            // setCamera fires cell.setCamera which now (morphInProgress=false)
+            // refreshes chrome alphas to cell-rest values per the smoothstep curves.
+            self.setCamera(self.camera)
+            self.setActiveCellIndex(nil)
+            self.restoreNaturalSiblingOrder()
+        }
+    }
 
     /// Internal cell-rest path. activeCellIndex clears only when BOTH springs
     /// settle AND heightConstraint reaches naturalHeight. The

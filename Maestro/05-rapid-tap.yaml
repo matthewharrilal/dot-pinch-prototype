@@ -1,0 +1,25 @@
+appId: com.matthewharrilal.dotpinchprototype
+name: "05-rapid-tap — rapid taps on cell verify guards prevent re-fire"
+---
+- launchApp:
+    clearState: false
+- waitForAnimationToEnd:
+    timeout: 3000
+- assertVisible:
+    id: "ConversationSurface"
+# Rapid taps; isPresenting + activeCellIndex guards must prevent multi-fire of cane curve
+- tapOn:
+    point: 50%, 30%
+- tapOn:
+    point: 50%, 30%
+- tapOn:
+    point: 50%, 30%
+- tapOn:
+    point: 50%, 30%
+- tapOn:
+    point: 50%, 30%
+- waitForAnimationToEnd:
+    timeout: 5000
+# Should arrive cleanly at chat-rest, not crashed
+- assertVisible: "Share with Dot…"
+- takeScreenshot: 05-rapid-tap-final-state

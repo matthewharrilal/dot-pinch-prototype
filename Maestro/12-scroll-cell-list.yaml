@@ -1,0 +1,35 @@
+appId: com.matthewharrilal.dotpinchprototype
+name: "12-scroll-cell-list — pan up/down through the cell list; verify no layout crashes"
+---
+- launchApp:
+    clearState: false
+- waitForAnimationToEnd:
+    timeout: 3000
+- assertVisible:
+    id: "ConversationSurface"
+# Pan up several times to scroll deeper into the cell list
+- swipe:
+    direction: UP
+    duration: 800
+- swipe:
+    direction: UP
+    duration: 800
+- swipe:
+    direction: UP
+    duration: 800
+- waitForAnimationToEnd:
+    timeout: 2000
+- assertVisible:
+    id: "ConversationSurface"
+# Pan back down
+- swipe:
+    direction: DOWN
+    duration: 800
+- swipe:
+    direction: DOWN
+    duration: 800
+- waitForAnimationToEnd:
+    timeout: 2000
+- assertVisible:
+    id: "ConversationSurface"
+- takeScreenshot: 12-scroll-cell-list-final

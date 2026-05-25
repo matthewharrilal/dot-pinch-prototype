@@ -1,0 +1,18 @@
+appId: com.matthewharrilal.dotpinchprototype
+name: "02-tap-cell — tap first cell, verify chat appears"
+---
+- launchApp:
+    clearState: false
+- waitForAnimationToEnd:
+    timeout: 3000
+- assertVisible:
+    id: "ConversationSurface"
+# Tap the center of the first visible cell (around 30% from top)
+- tapOn:
+    point: 50%, 30%
+# Wait for the 2.8s reveal sequence + handoff
+- waitForAnimationToEnd:
+    timeout: 5000
+# After handoff, the chat composer placeholder should be visible
+- assertVisible: "Share with Dot…"
+- takeScreenshot: 02-tap-cell-chat-state

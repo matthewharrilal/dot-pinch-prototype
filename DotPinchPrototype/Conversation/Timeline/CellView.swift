@@ -88,6 +88,75 @@ final class CellView: UIView {
         return v
     }()
 
+    /// Inward-arrows affordance (§21). Visible at chat-rest, invisible at
+    /// cell-rest, smoothstep transition through morph. Top-left positioned
+    /// to rhyme visually with labelStack's leading anchor while pinchGlyph
+    /// is bottom-right. P1.2 closure-init at class top.
+    private(set) var chatRestAffordance: UIImageView = {
+        let v = UIImageView()
+        v.translatesAutoresizingMaskIntoConstraints = false
+        let config = UIImage.SymbolConfiguration(
+            pointSize: Theme.Symbol.pinchAffordancePointSize,
+            weight: Theme.Symbol.pinchAffordanceWeight
+        )
+        v.image = UIImage(systemName: SymbolName.pinchCollapseAffordance, withConfiguration: config)
+        v.tintColor = Theme.Text.glyph
+        v.isUserInteractionEnabled = false
+        v.alpha = 0   // hidden at cell-rest; setCamera drives the curve
+        return v
+    }()
+
+    // MARK: - Chat content + state controller (§1.3, §1.4)
+
+    /// The chat-rest content (header + bubbleStack + composer). Installed
+    /// lazily by RevealCoordinator at T=1.6s; persists with cell across pool
+    /// LRU; alpha-driven by setCamera per the §23 hybrid Z + alpha curve.
+    var chatContentContainer: ChatContentContainer?
+
+    /// Per-conversation transient state. Created lazily on configure(with:);
+    /// survives pool round-trips; bound to chatVC at install (per D10) and
+    /// to chatContent at handoff.
+    var stateController: ConversationStateController?
+
+    // MARK: - Loading dots (§22 / P2 / Phase 12)
+
+    /// 3-dot pulsing indicator. Visible when ConversationActivityTracker
+    /// reports this cell's conversation as active. Default-hidden (alpha=0);
+    /// `setActiveIndicatorVisible(_:)` toggles + drives the pulse animation.
+    private(set) lazy var dotsIndicator: DotsLoadingIndicator = {
+        let view = DotsLoadingIndicator()
+        view.alpha = 0
+        return view
+    }()
+
+    private var dotsIndicatorInstalled: Bool = false
+
+    /// Toggle the loading dots visibility. Idempotent. Installs the view on
+    /// first call so cells without active conversations never allocate it.
+    func setActiveIndicatorVisible(_ visible: Bool) {
+        if visible && !dotsIndicatorInstalled {
+            installDotsIndicator()
+        }
+        guard dotsIndicatorInstalled else { return }
+
+        if visible {
+            dotsIndicator.alpha = 1
+            dotsIndicator.startPulsing()
+        } else {
+            dotsIndicator.alpha = 0
+            dotsIndicator.stopPulsing()
+        }
+    }
+
+    private func installDotsIndicator() {
+        addSubview(dotsIndicator)
+        NSLayoutConstraint.activate([
+            dotsIndicator.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -20),
+            dotsIndicator.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 20)
+        ])
+        dotsIndicatorInstalled = true
+    }
+
     // MARK: - Cell-against-contentHost layout
 
     /// Natural page-coord height (data source's `heightForCellAt(:)`). Persistent
@@ -179,8 +248,14 @@ final class CellView: UIView {
         let expectedMidY = naturalCenterY
         DispatchQueue.main.async { [weak self] in
             guard let self else { return }
-            assert(abs(self.frame.midY - expectedMidY) < 0.5,
-                   "CellView: centerY-anchored invariant violated; frame.midY=\(self.frame.midY) expected=\(expectedMidY)")
+            // Check the UNTRANSFORMED center (layer.position.y), NOT frame.midY.
+            // frame.midY includes the cell's `transform` translation applied by
+            // updateNeighborTranslations.followActive (±half-growth at chat-rest).
+            // layer.position.y reflects the centerY-anchored constraint result
+            // without the transform, which is what this invariant actually
+            // protects: that the constraint produces the correct logical center.
+            assert(abs(self.layer.position.y - expectedMidY) < 0.5,
+                   "CellView: centerY-anchored invariant violated; layer.position.y=\(self.layer.position.y) expected=\(expectedMidY)")
         }
         #endif
     }
@@ -210,6 +285,7 @@ final class CellView: UIView {
             addSubview(labelStack)
             addSubview(chatRestCenterLabel)
             addSubview(pinchGlyph)
+            addSubview(chatRestAffordance)
         }
         activateConstraints()
     }
@@ -228,13 +304,25 @@ final class CellView: UIView {
             chatRestCenterLabel.centerXAnchor.constraint(equalTo: centerXAnchor),
             chatRestCenterLabel.centerYAnchor.constraint(equalTo: centerYAnchor),
             chatRestCenterLabel.leadingAnchor.constraint(greaterThanOrEqualTo: leadingAnchor, constant: 20),
-            chatRestCenterLabel.trailingAnchor.constraint(lessThanOrEqualTo: trailingAnchor, constant: -20)
+            chatRestCenterLabel.trailingAnchor.constraint(lessThanOrEqualTo: trailingAnchor, constant: -20),
+
+            // chatRestAffordance: top-right (mirrors pinchGlyph diagonally;
+            // top-left would conflict with labelStack at progress transition).
+            chatRestAffordance.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -20),
+            chatRestAffordance.topAnchor.constraint(equalTo: safeAreaLayoutGuide.topAnchor, constant: 16)
         ])
     }
 
     // MARK: - Data binding
 
     func configure(with conversation: Conversation) {
+        // If rebinding to a different conversation, tear down chatContent so
+        // the new conversation's state doesn't leak into the old chatContent.
+        // Identity-keyed pool's invariant: same UUID → same cell instance.
+        if let existing = stateController, existing.conversationID != conversation.id {
+            teardownChatContent()
+        }
+
         activeConversationID = conversation.id
         dateLabel.text = conversation.displayDate
         topicSummaryLabel.text = conversation.curatedSummary
@@ -244,36 +332,156 @@ final class CellView: UIView {
         chatRestCenterLabel.text = marker
     }
 
-    // MARK: - Camera-change seam
+    // MARK: - Camera-change seam (per-frame chrome + chat-content driver)
 
     /// Push-from-canvas camera update. Drives the progress-based alpha curves
-    /// for cell-rest chrome (labelStack + pinchGlyph) so they fade out as the
-    /// cell expands toward chat-rest. NEVER writes cell.alpha or
-    /// cell.layer.transform (carrier invariants). Idempotent.
+    /// for cell-rest chrome (labelStack + pinchGlyph), the chat-rest affordance
+    /// (inward arrows per §21), the chatContent distance-fade (Z-translation
+    /// engaging m34 + residual alpha per §23 hybrid). NEVER writes cell.alpha
+    /// or cell.layer.transform (carrier invariants). Idempotent (P19.3).
+    ///
+    /// Pillar honors: P1.1 guard-chain, P6.7 silence justified, P11.1 SRP
+    /// (delegates to single-concern appliers), P12.2 tell-don't-ask,
+    /// P13.4 ≤15 LOC, P19.3 idempotent.
     func setCamera(_ camera: Camera, viewport: CGRect) {
-        guard bounds.height > 0 else { return }
-        // Morph gate: external animator owns alpha + chrome during morph.
-        if morphInProgress { return }
+        // P1.1 guard-chain | P6.7 silence justified:
+        // - bounds.height==0: pre-layout pass; alpha writes would be overwritten
+        // - morphInProgress: MorphChoreographer + PMCT own chrome alphas during
+        //   pinch-commit forward (per D19); setCamera defers
+        guard bounds.height > 0, !morphInProgress else { return }
+
+        let progress = computeProgress(viewport: viewport)
+        applyCellRestChromeAlphas(progress: progress)
+        applyChatRestAffordanceAlpha(progress: progress)
+        applyChatContentDistanceFade(progress: progress)
+        applyHorizontalInsetForProgress(progress)
+
+        // Cell-own-transform invariant (CLAUDE.md §2.2): cell.layer.sublayerTransform
+        // is ALWAYS identity — camera lives on canvas.layer.sublayerTransform.
+        layer.sublayerTransform = CATransform3DIdentity
+    }
+
+    // MARK: - Per-frame progress derivation (pure)
+
+    /// Clamped progress ∈ [0, 1] mapping cell heightConstraint to chat-rest extension.
+    /// P19.1 pure | P19.4 referentially transparent | P6.6 no sentinel.
+    private func computeProgress(viewport: CGRect) -> CGFloat {
         let naturalH = naturalHeight > 0 ? naturalHeight : bounds.height
         let chatRestFactor = viewport.height / naturalH
         let chatRestRange = chatRestFactor - 1.0
+
+        // When naturalH ≈ viewport.height, chatRestRange ≈ 0 — division
+        // would be undefined. Treat as "already at chat-rest".
+        guard chatRestRange > AlphaCurve.progressDenominatorEpsilon else { return 1.0 }
+
         let extensionFactor = bounds.height / naturalH
-        let progress: CGFloat = chatRestRange > 1e-6
-            ? min(1.0, max(0.0, (extensionFactor - 1.0) / chatRestRange))
-            : 1.0
+        let raw = (extensionFactor - 1.0) / chatRestRange
+        return min(1.0, max(0.0, raw))
+    }
 
-        let inverseFadeAlpha = 1 - smoothstep(0.05, 0.30, progress)
-        labelStack.alpha = inverseFadeAlpha
-        pinchGlyph.alpha = inverseFadeAlpha
+    // MARK: - Per-frame appliers (side-effectful, idempotent)
 
-        layer.sublayerTransform = CATransform3DIdentity
+    /// labelStack + pinchGlyph fade IN as progress drops toward cell-rest.
+    private func applyCellRestChromeAlphas(progress: CGFloat) {
+        let alpha = 1 - smoothstep(AlphaCurve.cellRestChromeIn, AlphaCurve.cellRestChromeFull, progress)
+        labelStack.alpha = alpha
+        pinchGlyph.alpha = alpha
+    }
 
-        // Horizontal inset: 16pt at cell-rest → 0 at chat-rest (edge-to-edge).
-        if pageWidth > 0, let leadingC = leadingConstraint, let widthC = widthConstraint {
-            let currentInset = naturalHorizontalInset * (1 - progress)
-            leadingC.constant = currentInset
-            widthC.constant = pageWidth - 2 * currentInset
-        }
+    /// Inward-arrows affordance fades OUT as progress drops toward cell-rest.
+    private func applyChatRestAffordanceAlpha(progress: CGFloat) {
+        chatRestAffordance.alpha = smoothstep(
+            AlphaCurve.chatRestAffordanceIn,
+            AlphaCurve.chatRestAffordanceFull,
+            progress
+        )
+    }
+
+    /// chatContent recedes via m34 perspective foreshortening (Z-translation),
+    /// with residual alpha for deep-cell-rest cleanup. Per §23 hybrid.
+    /// Z is the substrate's perspective primitive; "fading-into-illegibility"
+    /// emerges as a CONSEQUENCE of distance, not an arbitrary alpha curve.
+    private func applyChatContentDistanceFade(progress: CGFloat) {
+        guard let chatContent = chatContentContainer else { return }
+
+        let z = (1 - progress) * AlphaCurve.chatContentZMax
+        chatContent.layer.transform = CATransform3DMakeTranslation(0, 0, z)
+        chatContent.alpha = smoothstep(
+            AlphaCurve.chatContentAlphaIn,
+            AlphaCurve.chatContentAlphaFull,
+            progress
+        )
+    }
+
+    /// Horizontal inset: 16pt at cell-rest → 0pt at chat-rest (edge-to-edge cell).
+    private func applyHorizontalInsetForProgress(_ progress: CGFloat) {
+        guard pageWidth > 0,
+              let leadingC = leadingConstraint,
+              let widthC = widthConstraint
+        else { return }
+
+        let currentInset = naturalHorizontalInset * (1 - progress)
+        leadingC.constant = currentInset
+        widthC.constant = pageWidth - 2 * currentInset
+    }
+
+    // MARK: - ChatContent install / teardown (§1.3)
+
+    /// Install chatContent + bind state controller. Idempotent — if already
+    /// installed, no-op (state controller's bind is idempotent too).
+    /// P11.1 SRP | P12.2 tell-don't-ask (delegates to container's configure).
+    func installChatContentIfNeeded(
+        conversation: Conversation,
+        parentVC: UIViewController,
+        stateController: ConversationStateController
+    ) {
+        guard chatContentContainer == nil else { return }
+
+        let container = ChatContentContainer(parentVC: parentVC)
+        container.alpha = 0
+        container.configure(with: conversation)
+
+        // CRITICAL ordering: addSubview FIRST so the container is in the cell's
+        // view tree (cell → contentHost → canvas → parentVC.view). Then activate
+        // cell-container intra-constraints. Then call activateCrossViewConstraints
+        // which references parentView.safeAreaLayoutGuide — now reachable via
+        // the now-connected view tree. Init-time activation would crash with
+        // NSGenericException (anchors in disconnected hierarchies).
+        addSubview(container)
+
+        NSLayoutConstraint.activate([
+            container.leadingAnchor.constraint(equalTo: leadingAnchor),
+            container.trailingAnchor.constraint(equalTo: trailingAnchor),
+            container.topAnchor.constraint(equalTo: topAnchor),
+            container.bottomAnchor.constraint(equalTo: bottomAnchor)
+        ])
+
+        container.activateCrossViewConstraints()
+
+        stateController.bind(to: container)
+        chatContentContainer = container
+        self.stateController = stateController
+
+        layoutIfNeeded()
+    }
+
+    /// Teardown chatContent (called when cell rebinds to a different conversation).
+    func teardownChatContent() {
+        chatContentContainer?.teardownCrossViewConstraints()
+        chatContentContainer?.removeFromSuperview()
+        chatContentContainer = nil
+        stateController?.unbind()
+        stateController = nil
+    }
+
+    /// Distinct from teardownChatContent: this is for memory pressure response
+    /// per §35. The cell instance STAYS in the pool for fast re-bind later;
+    /// only the heavy chatContent + stateController are released.
+    func teardownChatContentForMemoryPressure() {
+        chatContentContainer?.teardownCrossViewConstraints()
+        chatContentContainer?.removeFromSuperview()
+        chatContentContainer = nil
+        stateController = nil
     }
 
     // MARK: - Morph state lifecycle

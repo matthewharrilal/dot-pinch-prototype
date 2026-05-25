@@ -89,3 +89,27 @@ targets:
         GENERATE_INFOPLIST_FILE: YES
         SWIFT_VERSION: "5.9"
         IPHONEOS_DEPLOYMENT_TARGET: "17.0"
+
+  DotPinchPrototypeUITests:
+    type: bundle.ui-testing
+    platform: iOS
+    deploymentTarget: "17.0"
+    sources:
+      - path: UITests
+        type: group
+        excludes:
+          - "**/README.md"
+          - "**/.gitkeep"
+    dependencies:
+      - target: DotPinchPrototype
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.matthewharrilal.dotpinchprototype.uitests
+        PRODUCT_NAME: DotPinchPrototypeUITests
+        TEST_TARGET_NAME: DotPinchPrototype
+        CODE_SIGN_STYLE: Automatic
+        CODE_SIGNING_REQUIRED: NO
+        CODE_SIGNING_ALLOWED: NO
+        GENERATE_INFOPLIST_FILE: YES
+        SWIFT_VERSION: "5.9"
+        IPHONEOS_DEPLOYMENT_TARGET: "17.0"

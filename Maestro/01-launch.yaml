@@ -1,0 +1,11 @@
+appId: com.matthewharrilal.dotpinchprototype
+name: "01-launch — cold launch, verify cell list renders"
+---
+- launchApp:
+    clearState: false
+- waitForAnimationToEnd:
+    timeout: 3000
+# Verify at least one cell is visible (each cell has accessibilityIdentifier "ConversationSurface")
+- assertVisible:
+    id: "ConversationSurface"
+- takeScreenshot: 01-launch-cell-list

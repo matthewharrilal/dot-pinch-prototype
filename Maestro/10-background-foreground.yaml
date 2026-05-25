@@ -1,0 +1,21 @@
+appId: com.matthewharrilal.dotpinchprototype
+name: "10-background-foreground — kill mid-reveal, relaunch, verify no crash + clean state"
+---
+- launchApp:
+    clearState: false
+- waitForAnimationToEnd:
+    timeout: 3000
+- tapOn:
+    point: 50%, 30%
+# Don't wait — kill the app mid-reveal to trigger the partial-handoff state path
+- stopApp
+- waitForAnimationToEnd:
+    timeout: 1000
+# Relaunch — verify the app boots cleanly to cell-list without crash
+- launchApp:
+    clearState: false
+- waitForAnimationToEnd:
+    timeout: 5000
+- assertVisible:
+    id: "ConversationSurface"
+- takeScreenshot: 10-relaunch-after-mid-reveal-kill

@@ -8749,7 +8749,7 @@ The substrate ALREADY reaches chat content via the dual-representation architect
 
 **Case D — scene deactivates mid-spring:** `cancelInFlightAnimations()` is called (existing infrastructure). For reverse-pinch, this must also stop `widthSpringAnimator`. Current cancellation path (TC:1024) stops `extensionAnimator`; widthSpringAnimator needs the same treatment.
 
-**Case E — new pinch-out starts during reverse settle (re-engage):** user changes their mind, pinches back toward chat-rest. Springs must reverse direction. SpringAnimator's velocity continuity handles this — when target changes mid-flight, the spring carries velocity into the new target. Existing infrastructure supports this for `extensionAnimator`; widthSpringAnimator needs to support it too (no special handling — SpringAnimator already does velocity-continuous retargeting).
+**Case E — new pinch-out starts during reverse settle (re-engage):** user changes their mind, pinches back toward chat-rest. **CORRECTION (per §48.5 CF#17 doc-drift D3 reconcile, 2026-05-25):** the original Case-E description claimed "SpringAnimator's velocity continuity handles this — when target changes mid-flight, the spring carries velocity into the new target." That is TECHNICALLY TRUE of `SpringAnimator.target.didSet` (SA:32-40 — velocity-continuous retarget while `state == .running`), but the gesture flow does NOT use that path. `handlePinchBegan` (TC:1024-1031) calls `cameraAnimator.stop(immediately:true)` + `extensionAnimator.stop(immediately:true)` → animator state becomes `.ended` → SpringAnimator's `velocity` field is preserved (CF#14) but the gesture's `.changed` handler writes `setCamera` DIRECTLY (bypassing the spring); the gesture flow does not feed a new target into the still-running spring. At `.ended`, `handlePinchEnded` computes a FRESH velocity from `recognizer.velocity` (TC:1140 `extensionVel = pinchState.initialExtension * pinchVel`; TC:1155 `cameraTranslationVelocity = -centroidVelocity`) and assigns it explicitly to the spring at TC:1485 — the SPRING'S OWN preserved velocity is discarded (dead code per §48.5 CF#15). The actual mechanism: **hard-cut at `.began`, fresh-recompute at `.ended`.** Phenomenology: gesture re-engagement is a discrete event; spring's prior momentum is replaced by user-finger velocity. This is the intentional architecture per §47.7 / R44 — a "state-machine cleanliness" choice over "velocity-continuous retarget." Note: §43.7's monotonic-height finding and TC:1719's shared-response invariant survive this discipline. Per E11 escalation (open): pinch-during-forward-K7 is a separate concern with its own velocity-continuity question.
 
 **Required change:**
 1. In `cancelInFlightAnimations()` (TC equivalent), add `widthSpringAnimator.stop(immediately: true)`.
@@ -10340,6 +10340,165 @@ The marginal value of additional traces beyond T13 is approaching zero. The rema
 - Forward/Phase 11 cinematography decisions (K8 retirement, E10, E11 escalations)
 
 The 9 latent bugs are valuable independent of whether the nav pivot ships. Recommend addressing them in their own wave (Wave 14?) before the substrate pivot lands.
+
+
+
+## §49 — Wave 14 execution: complete N-task inventory + status (2026-05-25)
+
+User directive: execute ALL action items N1-N69 (plus N1a-N1e, N6a sub-letters) with maximum rigor on a single branch (`wave-14-execution`). This section is the COMPLETE inventory acknowledging every task — no silent drops, no glossing.
+
+### §49.0 — Total task census (69 numbered + 6 lettered subitems = 75 items)
+
+**Status legend:**
+- ✓ DONE: implemented + committed (or staged)
+- ◐ IN PROGRESS: partial implementation this turn
+- ⊙ DEPENDS: blocked on prior task in the wave
+- ⊘ FRONTIER: requires running code / device / visual observation — out of scope for static execution
+- ⊗ ESCALATION: requires user decision before proceeding (defaults applied silently per `feedback_autonomous_waves`)
+
+### §49.1 — Latent bug fixes (Priority 1, independent of nav pivot)
+
+| # | Task | Status | Notes |
+|---|---|---|---|
+| N3 | Fix cancelled-target latent bug (capture target in closure) | ⊙ DEPENDS | Cancelled-from-cell-rest goes through springToCellRest (target=cell-rest, correct); cancelled-from-chat-rest goes through springToChatRest (target=chat-rest, correct). T4's "latent bug" finding may have been misread; verify before fixing |
+| N42 | Move normalize to K7 animationDidStop callback | ⊘ FRONTIER | High-risk timing change; defer until WAVE A nav pivot lands (normalize semantics change there) |
+| N43 | Refactor normalizeToChatRest for CF-5 atomicity | ⊙ DEPENDS | Needed for nav pivot (WAVE A); centerCameraOnActiveCell inlining requires Camera.scale field first |
+| N44 | canvas.isUserInteractionEnabled toggle around K7 | ◐ IN PROGRESS | Belt-and-braces; small change in animateCameraToChatRest + RC handoff |
+| N45 | cancelInFlightAnimations K7-active stuck-state (CF-3) | ✓ DONE | Extended to clearCaneCurveAnimations + transform reset |
+| N48 | Window-active flag for pinchRecognizer.isEnabled (CF-1) | ⊙ DEPENDS | Only meaningful if §47.5 derived-state reduction lands; deferred with that proposal |
+| N60 | cancelInFlightAnimations → clearCaneCurveAnimations (CF#3) | ✓ DONE | Same as N45 (duplicate); implemented |
+| N61 | morphIsHeld predicate (CF#4) | ⊙ DEPENDS | Same dependency as N48 — defer with §47.5 reduction |
+| N62 | Extend isQuiet to check K7 animation key (CF#2) | ◐ IN PROGRESS | Small predicate extension |
+| N63 | RM bypass for springToCellRest (CF#10) | ✓ DONE | snapToCellRestState helper added |
+| N64 | RM bypass for playTapToChatMorph (CF#11) | ✓ DONE | Mirror of animateCameraToChatRest TC:1280 |
+| N65 | Reconcile §44.13 Case E vs implementation (CF#17) | ◐ IN PROGRESS | Doc-bug fix in HANDOFF-CHECKLIST.md §44.13 |
+
+### §49.2 — Nav substrate WAVE A (Priority 2)
+
+| # | Task | Status | Notes |
+|---|---|---|---|
+| N20 | Camera.scale: CGFloat with precondition (finite, >0) | ⊙ DEPENDS | Substrate pivot atomic unit — bundles N1a/N1b/N1c/N1d/N1e/N5/N6/N6a |
+| N1a | Rename extensionAnimator → cameraScaleAnimator | ⊙ DEPENDS | Per T1 — preserves AnimationController plumbing |
+| N1b | Add cameraTranslationAnimator | ⊙ DEPENDS | Split from current cameraAnimator |
+| N1c | cameraScaleAnimator in springToCellRest | ⊙ DEPENDS | Replaces extensionAnimator height-target with scale-target |
+| N1d | 3-condition tryClearActiveCellAtRest predicate | ⊙ DEPENDS | camera.scale≈1.0 && camera.translation≈cell.midY && no in-flight |
+| N1e | applyCameraTransform 3-factor matrix composition | ⊙ DEPENDS | T(vpC) · S(s) · T(-cam.translation) per T8 |
+| N5 | scale-aware pageRectFromViewportRect + pagePoint | ⊙ DEPENDS | Paired with N1e — inverse for hit-test |
+| N6 | Camera.scale in pagePoint inverse math | ⊙ DEPENDS | Same as N5 (duplicate naming) |
+| N6a | cellIndex/cellIndices scale-awareness | ⊙ DEPENDS | Inherited via N5/N6 |
+| N21 | PinchState field reshape | ⊙ DEPENDS | After Camera.scale lands |
+| N22 | Inverse-scale mapping in handlePinchChanged | ⊙ DEPENDS | camera.scale = initialCameraScale/recognizer.scale |
+| N23 | Velocity formula in handlePinchEnded | ⊙ DEPENDS | cameraScaleVel = -c0 × pinchVel / r² |
+| N24 | Commit classification operand rename | ⊙ DEPENDS | extension-factor → camera-scale (verbatim transfer) |
+| N25 | Adversarial guard recognizer.scale > 1e-3 | ⊙ DEPENDS | Defensive math guard |
+
+**Decision: WAVE A is too large to land in this execution turn safely. Defer to a dedicated wave (Wave 15?) after Wave 14 ships latent bug fixes.** Reason: ~14 entangled tasks; each touches load-bearing infrastructure; visual-diff harness (Priority 6) needed FIRST to validate; nav pivot without visual gate would be irresponsible per `feedback_visual_testing_every_wave`.
+
+### §49.3 — Per-cell deletions / setCamera trivialization (Priority 3)
+
+| # | Task | Status | Notes |
+|---|---|---|---|
+| N1 | ChatContentContainer constraint redesign (PAIRED with applyHorizontalInsetForProgress deletion) | ⊙ DEPENDS | Requires N20 + empirical spike per N66 |
+| N4 | K8 retirement decision (E7) | ⊗ ESCALATION | User decision required; default: retire (matches §46.0 2D commitment) |
+| N50 | updateVisibleCells install-set freeze during activation | ⊙ DEPENDS | Paired with N5 (scale-aware pageRectFromViewportRect) |
+| N51 | PAIRED with N5 (duplicate task) | ⊙ DEPENDS | Same as N50 |
+
+### §49.4 — RevealCoordinator cleanup (Priority 4)
+
+| # | Task | Status | Notes |
+|---|---|---|---|
+| N7 | DELETE ChatViewController (cascade) | ⊙ DEPENDS | Major surgery; requires N20 substrate + empirical keyboard testing per N66 |
+| N8 | REDUCE RevealCoordinator to <50 LOC | ⊙ DEPENDS | Paired with N7 |
+| N9 | Blur curtain fate decision | ⊘ FRONTIER | Requires reference video re-observation at frame 25-30 |
+| N10 | First-responder camera-arrival hook | ⊙ DEPENDS | Replacement for the deleted RC handoff path |
+
+### §49.5 — Documentation + tests (Priority 5)
+
+| # | Task | Status | Notes |
+|---|---|---|---|
+| N52 | K10 invariant test (install-set monotonicity) | ◐ IN PROGRESS | Variant A + B per T11 |
+| N53 | install-set discipline docs in CLAUDE.md §2.3 | ◐ IN PROGRESS | Paragraph addition |
+| N55 | Append K9-K14 6-row table to CLAUDE.md Part 4 | ◐ IN PROGRESS | T12 produced verbatim deliverable |
+| N56 | K9-K14-touch escalation bullet in CLAUDE.md Part 6 | ◐ IN PROGRESS | T12 produced verbatim bullet |
+| N57 | NavSubstrateInvariantTests.swift (14 tests) | ◐ IN PROGRESS | T12 produced skeleton; some XCTSkip pending ManualAnimationDriver |
+| N58 | Centralize chatRestFactor helper | ◐ IN PROGRESS | TimelineCanvas.chatRestScale(for:) — collapses 5 scattered derivations |
+| N59 | Resolve Part 4 row-9 doc-drift | ◐ IN PROGRESS | "5 invariant asserts" reference vs current 4-test file |
+| N46 | testCameraScaleStaysAt1DuringForwardMorph | ⊙ DEPENDS | Requires §47.6 N11 ManualAnimationDriver + Camera.scale field |
+| N47 | testTransformAndSublayerTransformAtomicAtNormalize | ⊙ DEPENDS | Requires CF-5 refactor + Camera.scale field |
+
+### §49.6 — Visual gate infrastructure (Priority 6)
+
+| # | Task | Status | Notes |
+|---|---|---|---|
+| N11 | Tests/Support/ManualAnimationDriver.swift | ◐ IN PROGRESS | Ticker protocol + manual driver |
+| N12 | Commit /tmp/dot_pinch_frames → Tests/Reference/dot_pinch/ | ◐ IN PROGRESS | 60 PNGs ~5MB |
+| N13 | NavSubstrateCellInvariantTests.swift | ⊙ DEPENDS | Per T6 listing; some overlap with N57 — merge plan |
+| N14 | NavSignatureTests.swift | ⊙ DEPENDS | 5 signature tests per T6 |
+| N15 | scripts/visual-diff.sh + Tests/Support/PHash.swift | ◐ IN PROGRESS | pHash + Hamming-distance comparison |
+| N16 | Rewrite WaveR34 per CF-1 (viewport-coord) | ⊙ DEPENDS | Requires N5 scale-aware helpers |
+| N17 | testM34InvariantAcrossCameraOps (KVO canary) | ◐ IN PROGRESS | K2 keystone runtime canary |
+| N18 | PinchGestureUITests.waitForCellList predicate-poll | ◐ IN PROGRESS | Replace 3.5s sleep |
+
+### §49.7 — Frontiers + deferred (Priority 7, out of static-execution scope)
+
+| # | Task | Status | Notes |
+|---|---|---|---|
+| N49 | Verify makeCAAnimation isRemovedOnCompletion = false | ⊘ FRONTIER | Quick code read — actually doable; promote to ◐ |
+| N54 | Verify minimum permissible camera.scale (overscroll) | ⊘ FRONTIER | Empirical against running app |
+| N66 | Empirical spike — composer/keyboard under sublayerTransform | ⊘ FRONTIER | Requires running app |
+| N67 | Architecture decision — composer at inputAccessoryView vs cell-position vs canvas-level | ⊗ ESCALATION | User decision required after N66 spike |
+| N68 | Multi-finger gesture trace | ⊘ FRONTIER | Edge case; very low priority |
+| N69 | Rotation-during-K7 trace | ⊘ FRONTIER | Edge case; very low priority |
+
+### §49.8 — Open escalations (require user decision; defaults applied)
+
+| ID | Escalation | Default | Status |
+|---|---|---|---|
+| E1 | springResponse retune Y/N | NO retune | Applied |
+| E2 | chatRestCenterLabel applier add or out-of-scope | ADD | Pending implementation |
+| E3 | Driver 3 gradient peak vs monotonic intent | Defer (re-verify) | Open |
+| E7 | K8 sin-bell arc retirement | Retire (§46.0 2D) | Pending implementation |
+| E8 | Cancelled-target bug fix | Fix during pivot | Disputed — may not be a real bug |
+| E10 | Pinch translation cell-centered vs anchor-stable | Cell-centered | Pending implementation |
+| E11 | Pinch-during-forward velocity continuity policy | Hard-cut (current behavior) | Open |
+
+### §49.9 — Doc-drifts flagged
+
+| # | Drift | Status |
+|---|---|---|
+| D1 | CLAUDE.md Part 4 row 9: "5 invariant asserts in InvariantHardeningTests" — file has 4 unrelated tests | ◐ IN PROGRESS via N59 |
+| D2 | chatRestFactor derivation scattered across 5 sites (TC:1298, 1368, 1401, 1467, 1664) | ◐ IN PROGRESS via N58 |
+| D3 | §44.13 Case E description vs implementation inconsistency on velocity continuity | ◐ IN PROGRESS via N65 |
+
+### §49.10 — Wave 14 execution plan + scope decision
+
+**Honest assessment:** of the 75 items, ~36 require Camera.scale substrate (NAV WAVE A) which is a multi-day commitment requiring visual gate FIRST. Trying to land WAVE A this turn is irresponsible without the gate. **Wave 14 SCOPE:**
+
+**IN SCOPE this wave (executable now, validation-safe):**
+- All N45/N60/N63/N64 latent-bug fixes (✓ DONE)
+- N44 canvas.isUserInteractionEnabled toggle (◐)
+- N62 isQuiet extension (◐)
+- N65 §44.13 Case E doc reconcile (◐)
+- N52/N53/N55/N56/N57 CLAUDE.md + test scaffolding (◐)
+- N58 centralize chatRestFactor (◐ — code change, but read-only behavior preserving)
+- N59 Part 4 row-9 doc-drift (◐)
+- N49 verify makeCAAnimation isRemovedOnCompletion (◐)
+- N11 ManualAnimationDriver (◐)
+- N12 golden frames commit (◐)
+- N15 PHash + visual-diff infrastructure (◐)
+- N17 testM34InvariantAcrossCameraOps (◐)
+- N18 PinchGestureUITests sleep → poll (◐)
+
+**OUT OF SCOPE for Wave 14 (require WAVE A nav pivot — defer to Wave 15):**
+- N1, N1a-N1e, N5, N6, N6a, N20, N21-N25, N42, N43, N50, N51 — substrate pivot bundle
+- N7, N8, N10 — RC reduction (after substrate)
+- N13, N14, N16, N46, N47 — tests needing substrate primitives
+- N4 (K8 retirement) — bundle with substrate
+
+**FRONTIERS (require empirical / decision):**
+- N9, N66, N67, N68, N69, N54, E3, E11
+
+This scoping aligns with the visual gate discipline (`feedback_visual_testing_every_wave`) — ship latent bug fixes + infrastructure now; ship substrate pivot in a separate wave with the gate built first.
 
 
 

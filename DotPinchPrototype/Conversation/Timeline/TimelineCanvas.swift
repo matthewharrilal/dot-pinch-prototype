@@ -998,6 +998,16 @@ final class TimelineCanvas: UIView {
         !morphChoreographer.isRunning
             && !cameraAnimator.isRunning
             && extensionAnimator.state != .running
+            && contentHost.layer.animation(forKey: MorphAnimationKey.windupScale.rawValue) == nil
+    }
+
+    /// Standard chat-rest scale derivation `bounds.height / naturalH`. Used at
+    /// 5 cell-rest spring/snap sites. K7 cane curve uses a DIFFERENT formula
+    /// (viewportCoverageHeight / naturalH) at TC:1298 — NOT this helper.
+    private func chatRestScale(for cell: CellView) -> CGFloat {
+        let nh = cell.naturalHeight
+        guard nh > 0, bounds.height > 0 else { return 1.0 }
+        return bounds.height / nh
     }
 
     // MARK: - Pinch gesture (recognizer plumbing)
@@ -1386,10 +1396,34 @@ final class TimelineCanvas: UIView {
         pinchRecognizer.isEnabled = false
     }
 
+    /// Reduce-Motion bypass for the reverse-pinch settle. Synchronous snap to
+    /// the cell-rest end-state. End-state-equivalent to springToCellRest's
+    /// terminal state — camera at lastCellRestScrollY + bounds.height/2,
+    /// cell at naturalHeight, activeCellIndex cleared, sibling order restored.
+    private func snapToCellRestState(activeCell: CellView, heightC: NSLayoutConstraint) {
+        CATransaction.withSuppressedActions {
+            heightC.constant = activeCell.naturalHeight
+            camera = Camera(translation: lastCellRestScrollY + bounds.height / 2)
+            applyCameraTransform()
+            contentHost.layer.transform = CATransform3DIdentity
+            activeCell.stateController?.composerIsFirstResponder = false
+        }
+        setActiveCellIndex(nil)
+        restoreNaturalSiblingOrder()
+    }
+
     /// Internal chat-rest path. Called by `animateCameraToChatRest` (tap)
     /// and `handlePinchEnded` commit branch (with carried velocity).
     /// Sub-1pt/s velocities floor to 0 via `CameraAnimator.safeVel`.
     fileprivate func playTapToChatMorph(forCellAt k: Int) {
+        // Apple HIG vestibular-trigger compliance: when Reduce Motion is on,
+        // snap to chat-rest end-state synchronously (mirror animateCameraToChatRest
+        // TC:1280). The snap is end-state-equivalent to the morph's t=1.0 state.
+        if UIAccessibility.isReduceMotionEnabled {
+            snapToChatRestState(forCellAt: k)
+            onMorphRevealReady?(k)
+            return
+        }
         setActiveCellIndex(k)
         guard let activeCell = instantiatedCells[k],
               let heightC = activeCell.heightConstraint else { return }
@@ -1492,6 +1526,16 @@ final class TimelineCanvas: UIView {
         extensionAnimator.stop(immediately: true)
         pendingRevealWorkItem?.cancel()
         pendingRevealWorkItem = nil
+        // K7 held CABasicAnimations are attached directly to contentHost.layer
+        // (isRemovedOnCompletion=false) and survive scene deactivation. Clear
+        // them here so reactivation doesn't see a stuck cane-curve transform.
+        CATransaction.withSuppressedActions {
+            contentHost.layer.removeAnimation(forKey: MorphAnimationKey.windupScale.rawValue)
+            contentHost.layer.removeAnimation(forKey: MorphAnimationKey.zoomScale.rawValue)
+            contentHost.layer.removeAnimation(forKey: MorphAnimationKey.windupTranslate.rawValue)
+            contentHost.layer.removeAnimation(forKey: MorphAnimationKey.morphCentering.rawValue)
+            contentHost.layer.transform = CATransform3DIdentity
+        }
     }
 
     // MARK: - Normalize to chat-rest (post-cane-curve / post-pinch-commit cleanup)
@@ -1709,6 +1753,14 @@ final class TimelineCanvas: UIView {
               let heightC = activeCell.heightConstraint else {
             setActiveCellIndex(nil)
             restoreNaturalSiblingOrder()
+            return
+        }
+
+        // Apple HIG vestibular-trigger compliance for reverse direction:
+        // snap to cell-rest end-state synchronously instead of running a
+        // ~0.4s spring animation through scale = chatRestFactor → 1.0.
+        if UIAccessibility.isReduceMotionEnabled {
+            snapToCellRestState(activeCell: activeCell, heightC: heightC)
             return
         }
 

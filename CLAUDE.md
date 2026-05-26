@@ -78,6 +78,8 @@ These are the day-to-day patterns that follow from the phenomenology. Treat each
 
 **DON'T**: Add a `UICollectionView` or `UITableView` for "convenience" in some new feature. The cell pool semantics are incompatible with `dequeueReusableCell`'s contract. If a list-like feature is needed, use the existing `TimelineCanvas` substrate or build a new canvas that follows the same pattern.
 
+**INSTALL-SET DISCIPLINE (prospective, lands with HANDOFF §47.13 WAVE A; K10 candidate):** Under the navigation substrate (HANDOFF §46.0), neighbor cells must be in `contentHost.subviews` BEFORE the camera-pullback exposes them — "neighbor uncovered, not created" per §46.1 signature 5. The install set (= `Set(instantiatedCells.keys)`) must be MONOTONE-NON-DECREASING during an activation session: from `setActiveCellIndex(k)` (non-nil) to the matching `setActiveCellIndex(nil)`, no cell may transition from "not in `contentHost.subviews`" to "in `contentHost.subviews`." Practically: during activation, `cellIndices(in: visiblePageRect, plusMargin:)` must be computed against a CELL-REST projection of viewport (or equivalently: union new range with prior range — never shrink). The 20-cap on `maxKeyedPoolSize` is the KEYED POOL memory budget (K4), a separate quantity from the install set; do not conflate. See HANDOFF §48.3 / T11 for full derivation.
+
 ### 2.4 Gestures
 
 **DO**: Attach gesture recognizers directly to `TimelineCanvas` (not to a wrapping `UIScrollView`). The canvas owns gesture interpretation end-to-end.
@@ -168,7 +170,20 @@ These are load-bearing. Modifying them requires explicit user discussion.
 | `EngagementState.engaged(completion:)` carrying closure | The completion closure carries the state-transition continuation; replacing with a plain enum loses the multi-animator coordination. |
 | 4 additive `CABasicAnimation`s in `animateCameraToChatRest` | Removing any one breaks velocity continuity or the cane curve. Each is doing a specific job. |
 | `MorphChoreographer`'s sin-bell Y/Z arc | The 3D depth feeling of the pinch-commit morph depends on this specific arc shape. |
-| 5 invariant asserts in `InvariantHardeningTests` | These encode load-bearing invariants discovered through audit. Failing tests are real bugs, not test-suite noise. |
+| Substrate invariant asserts in `InvariantHardeningTests` + `NavSubstrateInvariantTests` + `WaveR41SubstrateCanaryTests` | These encode load-bearing invariants discovered through audit. Failing tests are real bugs, not test-suite noise. (Wave-13 doc-drift D1 resolved: "5 invariant asserts" reference replaced with file-set reference; substrate canaries now live across three files per HANDOFF §49.) |
+
+**Navigation substrate keystones (K9-K14, prospective — land with the navigation pivot per HANDOFF §47.13 WAVE A):**
+
+| Keystone (prospective) | Why it's load-bearing |
+|---|---|
+| `Camera` value type carries `(translation, scale)` as a single struct (K9) | Single source of truth for camera state. Splitting into two structs forces dual-read coordination at every commit-classification site; the single-struct form makes the SSoT structurally impossible to forget. Adding `scale: CGSize` (anisotropic) or `rotation` would deform K14's matrix algebra. |
+| `contentHost.layer.sublayerTransform` is the SOLE writer of camera scale (K10) | Phase-locking guarantee extends to scale. Second writer = last-write-wins race per 180Hz tick. Distinct from `canvas.layer.sublayerTransform.m34` (K2) — different LAYERS; m34 is on the parent, camera lives on the child. K10 does NOT disturb K2. Read sites are unrestricted; only writes are funneled through `applyCameraTransform()`. |
+| `cell.heightConstraint.constant == cell.naturalHeight` always during gesture (K11) | The HANDOFF §46 navigation phenomenology says the cell does not move; the camera does. Cell height is constant; apparent fill-the-viewport at chat-rest is produced by camera scale, not by changing cell height. Requires paired `ChatContentContainer` constraint redesign (otherwise composer goes off-screen at chat-rest — see §47.2 CF#1). |
+| Normalize-step substrate handoff is atomic (K12) | At forward-morph completion, the held chat-rest state must transfer from `contentHost.layer.transform` (K7 cane curve) to `contentHost.layer.sublayerTransform.scale` (K10). The two writes (`camera = Camera(scale: chatRestFactor, ...)` + `contentHost.layer.transform = CATransform3DIdentity`) MUST live in the same `CATransaction.withSuppressedActions` block. Non-atomic handoff produces compound-scale or collapse-to-cell-rest visible-through-blur-curtain artifacts. |
+| Forward direction keeps `camera.scale = 1.0` throughout (K13 — Regime I) | The cane curve (K7) writes `contentHost.layer.transform.scale`; camera (K10) writes `contentHost.layer.sublayerTransform.scale`. They are DIFFERENT properties that multiply at render. Forward direction reserves the scale role for K7 on `.transform`; camera scale stays dormant (= 1.0) for the entire forward morph. The two channels are temporally separated: K7 owns forward; K10 owns reverse; K12 is the moment of transfer. Violating K13 produces compound-scale artifacts. |
+| Camera-scale pivot is viewport-center: matrix order `T(viewportCenter) · S(s) · T(-camera.translation)` (K14) | Pivot-around-viewport-center is always defined (bounds.midY known at any moment); cell-center pivot would break if `activeCellIndex` clears mid-gesture. The matrix composition order is non-commutative — wrong order produces cell-flies-off-screen at scale > 1.0. At `s = 1.0` the form reduces to `T(viewportCenter.y - camera.translation)` (current K1 form) — backwards-compatible during incremental rollout. m34 stays isolated (different layer, pure 2D scale at z=0). |
+
+**K9-K14 are a 6-tuple, not individually severable.** Shipping K9 without K10 leaves Camera.scale as a phantom field with no rendered referent. Shipping K10 without K11 produces composer-off-screen at chat-rest. Shipping K13 without K12 produces visible compound-scale at normalize. The navigation substrate pivot (HANDOFF §47.13 WAVE A) lands these as one atomic change. Any future proposal that touches one of K9-K14 must reason about the impact on the other five.
 
 ---
 
@@ -231,6 +246,7 @@ Escalate to the user (don't proceed silently) when:
 - The user's stated visual outcome and the available mechanisms don't have an obvious match — ask for clarification using `AskUserQuestion` before building.
 - An existing convention is unclear and your interpretation could go either way.
 - A "fix" would touch the cane-curve trajectory, the MorphChoreographer's arc parameters, the m34 focal length, or other tuning values that the README/cane-curve doc identifies as load-bearing.
+- A proposed change would modify any of the navigation substrate keystones K9-K14 (Camera value type shape, sublayerTransform sole-writer discipline, cell-height-constant invariant, normalize-step atomicity, forward-direction camera-scale-dormancy, or pivot matrix order). These are a mutually entangled 6-tuple; touching one requires reasoning about the others.
 
 Escalation is not failure. It is the discipline of not silently breaking the phenomenology.
 

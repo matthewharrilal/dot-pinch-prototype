@@ -1022,12 +1022,18 @@ final class TimelineCanvas: UIView {
     }
 
     /// Standard chat-rest scale derivation `bounds.height / naturalH`. Used at
-    /// 5 cell-rest spring/snap sites. K7 cane curve uses a DIFFERENT formula
+    /// 6 cell-rest spring/snap sites. K7 cane curve uses a DIFFERENT formula
     /// (viewportCoverageHeight / naturalH) at TC:1298 — NOT this helper.
     private func chatRestScale(for cell: CellView) -> CGFloat {
-        let nh = cell.naturalHeight
-        guard nh > 0, bounds.height > 0 else { return 1.0 }
-        return bounds.height / nh
+        chatRestScale(naturalHeight: cell.naturalHeight)
+    }
+
+    /// Overload for sites with a captured `naturalH` local (handlePinchChanged,
+    /// handlePinchEnded via activeCellContext) where the cell reference isn't
+    /// in scope.
+    private func chatRestScale(naturalHeight: CGFloat) -> CGFloat {
+        guard naturalHeight > 0, bounds.height > 0 else { return 1.0 }
+        return bounds.height / naturalHeight
     }
 
     // MARK: - Pinch gesture (recognizer plumbing)
@@ -1124,7 +1130,7 @@ final class TimelineCanvas: UIView {
 
         // Clamp to [naturalHeight, naturalHeight × chatRestFactor × 1.15].
         // The 1.15 headroom is the rubberband budget for over-pinch.
-        let chatRestExtensionFactor = bounds.height / naturalH
+        let chatRestExtensionFactor = chatRestScale(naturalHeight: naturalH)
         let ceiling = naturalH * chatRestExtensionFactor * 1.15
         let clampedExtension = min(ceiling, max(naturalH, rawNewExtension))
 
@@ -1162,7 +1168,7 @@ final class TimelineCanvas: UIView {
         let heightC = ctx.heightConstraint
         let naturalH = ctx.naturalH
 
-        let chatRestFactor = bounds.height / naturalH
+        let chatRestFactor = chatRestScale(naturalHeight: naturalH)
         let currentFactor = heightC.constant / naturalH
         let commitThreshold: CGFloat = (1.0 + chatRestFactor) / 2.0
 
@@ -1395,7 +1401,7 @@ final class TimelineCanvas: UIView {
         guard let cell = instantiatedCells[k], let heightC = cell.heightConstraint else { return }
         let naturalH = cell.naturalHeight
         guard naturalH > 0, bounds.height > 0 else { return }
-        let chatRestFactor = bounds.height / naturalH
+        let chatRestFactor = chatRestScale(naturalHeight: naturalH)
         let labelCounterScale = 1.0 / chatRestFactor
 
         CATransaction.withSuppressedActions {
@@ -1452,7 +1458,7 @@ final class TimelineCanvas: UIView {
 
         let naturalH = activeCell.naturalHeight
         guard naturalH > 0, bounds.height > 0 else { return }
-        let chatRestFactor = bounds.height / naturalH
+        let chatRestFactor = chatRestScale(naturalHeight: naturalH)
         let cameraTarget = activeCell.frame.midY
         let extensionTarget = naturalH * chatRestFactor
 
@@ -1518,7 +1524,7 @@ final class TimelineCanvas: UIView {
 
         let naturalH = activeCell.naturalHeight
         guard naturalH > 0, bounds.height > 0 else { return }
-        let chatRestFactor = bounds.height / naturalH
+        let chatRestFactor = chatRestScale(naturalHeight: naturalH)
         let cameraTarget = activeCell.frame.midY
         let extensionTarget = naturalH * chatRestFactor
 
@@ -1732,7 +1738,7 @@ final class TimelineCanvas: UIView {
 
         let naturalH = activeCell.naturalHeight
         guard naturalH > 0, bounds.height > 0 else { return }
-        let chatRestFactor = bounds.height / naturalH
+        let chatRestFactor = chatRestScale(naturalHeight: naturalH)
 
         let cameraStart = camera.translation
         let cameraEnd = lastCellRestScrollY + bounds.height / 2

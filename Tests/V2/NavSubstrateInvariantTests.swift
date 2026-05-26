@@ -26,17 +26,35 @@ final class NavSubstrateInvariantTests: XCTestCase {
 
     // MARK: - K9: Camera value type carries (translation, scale)
 
-    func test_K9_camera_carriesBothTranslationAndScale() throws {
-        throw XCTSkip("Camera.scale field not yet added — pending WAVE A N20")
-        // let c = Camera(translation: 100, scale: 2.5)
-        // XCTAssertEqual(c.translation, 100)
-        // XCTAssertEqual(c.scale, 2.5)
+    func test_K9_camera_carriesBothTranslationAndScale() {
+        // N20 landed: Camera carries (translation, scale) with default scale=1.0.
+        let c = Camera(translation: 100, scale: 2.5)
+        XCTAssertEqual(c.translation, 100)
+        XCTAssertEqual(c.scale, 2.5)
+
+        // Default scale=1.0 for backwards-compat with translation-only call sites.
+        let d = Camera(translation: 50)
+        XCTAssertEqual(d.translation, 50)
+        XCTAssertEqual(d.scale, 1.0)
     }
 
-    func test_K9_camera_identityIsTranslationZeroScaleOne() throws {
-        throw XCTSkip("Camera.scale field not yet added — pending WAVE A N20")
-        // XCTAssertEqual(Camera.identity.translation, 0)
-        // XCTAssertEqual(Camera.identity.scale, 1)
+    func test_K9_camera_identityIsTranslationZeroScaleOne() {
+        XCTAssertEqual(Camera.identity.translation, 0)
+        XCTAssertEqual(Camera.identity.scale, 1)
+    }
+
+    func test_K9_camera_equatable_acrossBothFields() {
+        XCTAssertEqual(Camera(translation: 1, scale: 2), Camera(translation: 1, scale: 2))
+        XCTAssertNotEqual(Camera(translation: 1, scale: 2), Camera(translation: 1, scale: 3))
+        XCTAssertNotEqual(Camera(translation: 1, scale: 2), Camera(translation: 2, scale: 2))
+    }
+
+    func test_K9_camera_isApproximatelyEqual_tolerantOnBothFields() {
+        let a = Camera(translation: 1.0, scale: 2.0)
+        let b = Camera(translation: 1.0 + 1e-12, scale: 2.0 + 1e-12)
+        XCTAssertTrue(a.isApproximatelyEqual(b))
+        let c = Camera(translation: 1.0, scale: 2.5)
+        XCTAssertFalse(a.isApproximatelyEqual(c))
     }
 
     func test_K9_camera_traps_onZeroScale() throws {
@@ -91,15 +109,66 @@ final class NavSubstrateInvariantTests: XCTestCase {
 
     // MARK: - K14: Pivot matrix order
 
-    func test_K14_matrixAtIdentityScale_reducesToTranslationOnly() throws {
-        throw XCTSkip("Requires applyCameraTransform refactor (N1e) + Camera.scale field (N20)")
+    func test_K14_matrixAtIdentityScale_reducesToTranslationOnly() {
+        // N5/N6/N20 landed. Verify viewport↔page math at scale=1.0 matches legacy form.
+        let cam = Camera(translation: 200, scale: 1.0)
+        let vpc = CGPoint(x: 195, y: 422)
+        let vp = TimelineCanvas.viewportPoint(fromPage: CGPoint(x: 0, y: 500), camera: cam, viewportCenter: vpc)
+        // Legacy: vp.y = page.y - cam.translation + vpc.y = 500 - 200 + 422 = 722
+        XCTAssertEqual(vp.y, 722.0, accuracy: 1e-9)
     }
 
-    func test_K14_matrixAtScale2_pivotsAroundViewportCenter() throws {
-        throw XCTSkip("Requires applyCameraTransform refactor (N1e) + Camera.scale field (N20)")
+    func test_K14_matrixAtScale2_pivotsAroundViewportCenter() {
+        // K14: scale=2 with camera.translation=100 + vpc.y=422 → page-y at 100 maps to vp.y=422.
+        let cam = Camera(translation: 100, scale: 2.0)
+        let vpc = CGPoint(x: 195, y: 422)
+        let pivot = TimelineCanvas.viewportPoint(fromPage: CGPoint(x: 0, y: 100), camera: cam, viewportCenter: vpc)
+        XCTAssertEqual(pivot.y, 422.0, accuracy: 1e-9, "K14 viewport-center pivot")
+
+        // Off-pivot point: page-y at 200 (100pt above pivot) at scale=2 → 200pt above vp center = vp.y = 622.
+        let offPivot = TimelineCanvas.viewportPoint(fromPage: CGPoint(x: 0, y: 200), camera: cam, viewportCenter: vpc)
+        XCTAssertEqual(offPivot.y, 622.0, accuracy: 1e-9, "K14 scale=2: 100pt page → 200pt viewport above pivot")
+    }
+
+    func test_K14_pagePoint_roundTrip_atScale() {
+        // Round-trip invariant: page → viewport → page = identity at any scale.
+        let cam = Camera(translation: 100, scale: 2.0)
+        let vpc = CGPoint(x: 195, y: 422)
+        let original = CGPoint(x: 0, y: 350)
+        let vp = TimelineCanvas.viewportPoint(fromPage: original, camera: cam, viewportCenter: vpc)
+        let backToPage = TimelineCanvas.pagePoint(fromViewport: vp, camera: cam, viewportCenter: vpc)
+        XCTAssertEqual(backToPage.y, original.y, accuracy: 1e-9)
     }
 
     func test_K14_pagePoint_atCameraTranslation_mapsToViewportCenter() throws {
-        throw XCTSkip("Requires scale-aware pagePoint(fromViewport:) helper (N5/N6) + Camera.scale field (N20)")
+        // N5/N6/N20 landed: scale-aware Camera + viewport↔page helpers.
+        // K14: page point at y = camera.translation maps to viewport-center at ANY scale.
+        let vpc = ViewportY(422)
+        for scale in [1.0, 1.5, 2.0, 4.5] as [CGFloat] {
+            let cam = Camera(translation: 100, scale: scale)
+            let vp = cam.viewportPoint(fromPage: PageY(100), viewportCenter: vpc)
+            XCTAssertEqual(vp.raw, 422.0, accuracy: 1e-9, "K14: page-y at camera.translation maps to viewportCenter.y at scale=\(scale)")
+        }
+    }
+
+    func test_K14_pagePoint_inverse_atIdentityScale_reducesToTranslationOnly() {
+        // K1 backwards-compat: at scale=1.0, scale-aware form reduces to legacy form.
+        let cam = Camera(translation: 200, scale: 1.0)
+        let vpc = ViewportY(422)
+        let pageAt500 = cam.viewportPoint(fromPage: PageY(500), viewportCenter: vpc)
+        // Legacy form: viewport_y = page_y - translation + viewportCenter.y = 500 - 200 + 422 = 722
+        XCTAssertEqual(pageAt500.raw, 722.0, accuracy: 1e-9)
+    }
+
+    // MARK: - K10 candidate: Install-set monotonicity during activation (per §48.3 / T11)
+
+    func test_K10_installSet_monotoneIntent_inUpdateVisibleCells() throws {
+        throw XCTSkip("Requires TimelineCanvas + TimelineDataSource test harness with data-source-driven layout — pending dedicated test-infra wave (post-N11 ManualAnimationDriver wiring)")
+        // Conceptual test (per HANDOFF §48.3 / T11 K10 invariant):
+        //   1. Setup canvas with 10 cells, no active cell, install set = visible-with-margin.
+        //   2. setActiveCellIndex(5); snapshot preActivationKeys = Set(instantiatedCells.keys).
+        //   3. Trigger updateVisibleCells N times (simulating camera changes).
+        //   4. Assert preActivationKeys.isSubset(of: Set(instantiatedCells.keys)) — install set never shrinks during activation.
+        //   5. setActiveCellIndex(nil); install set may now shrink to visible-with-margin.
     }
 }

@@ -311,7 +311,7 @@ final class TimelineCanvas: UIView {
         guard let idx = activeCellIndex, let activeCell = instantiatedCells[idx] else { return 0 }
         let naturalH = activeCell.naturalHeight
         guard naturalH > 0, bounds.height > 0 else { return 0 }
-        let chatRestFactor = bounds.height / naturalH
+        let chatRestFactor = chatRestScale(for: activeCell)
         let chatRestRange = chatRestFactor - 1.0
         guard chatRestRange > 1e-6 else { return 0 }
         let extensionFactor = activeCell.bounds.height / naturalH
@@ -484,17 +484,21 @@ final class TimelineCanvas: UIView {
         CATransform3DMakeTranslation(0, viewportCenter.y - camera.translation, 0)
     }
 
+    /// Scale-aware page→viewport mapping (N5/N6 + K14 pivot-at-viewport-center).
+    /// At camera.scale=1.0 reduces to the legacy translation-only form (K1 backwards-compat).
     static func viewportPoint(fromPage pagePoint: CGPoint, camera: Camera, viewportCenter: CGPoint) -> CGPoint {
         CGPoint(
             x: pagePoint.x,
-            y: pagePoint.y - camera.translation + viewportCenter.y
+            y: (pagePoint.y - camera.translation) * camera.scale + viewportCenter.y
         )
     }
 
+    /// Scale-aware viewport→page mapping (inverse of viewportPoint(fromPage:)).
+    /// At camera.scale=1.0 reduces to the legacy translation-only form.
     static func pagePoint(fromViewport viewportPoint: CGPoint, camera: Camera, viewportCenter: CGPoint) -> CGPoint {
         CGPoint(
             x: viewportPoint.x,
-            y: viewportPoint.y - viewportCenter.y + camera.translation
+            y: (viewportPoint.y - viewportCenter.y) / camera.scale + camera.translation
         )
     }
 
@@ -634,7 +638,23 @@ final class TimelineCanvas: UIView {
             return
         }
 
-        let visibleRange = cellIndices(in: visiblePageRect, plusMargin: Self.cullMargin)
+        let newRange = cellIndices(in: visiblePageRect, plusMargin: Self.cullMargin)
+
+        // N50 — Install-set monotonicity during activation (K10 candidate per
+        // HANDOFF §48.3 / T11). When activeCellIndex != nil, never SHRINK the
+        // install set — only grow it via union with prior range. Prevents the
+        // "uncovered not created" phenomenology violation under future camera-
+        // scale animation where visiblePageRect shrinks as scale grows.
+        // Under current main (no camera.scale), newRange typically already
+        // contains existing instantiated cells, so the union is a no-op.
+        let visibleRange: Range<Int>
+        if activeCellIndex != nil, let existingMin = instantiatedCells.keys.min(), let existingMax = instantiatedCells.keys.max() {
+            let lower = min(newRange.lowerBound, existingMin)
+            let upper = max(newRange.upperBound, existingMax + 1)
+            visibleRange = lower..<upper
+        } else {
+            visibleRange = newRange
+        }
 
         // Active-cell-pool-protection: the active cell stays in
         // `instantiatedCells` even when its page-frame falls outside the range.
@@ -1556,16 +1576,23 @@ final class TimelineCanvas: UIView {
             assertionFailure("normalizeToChatRest called with invalid activeCellIndex \(activeCellIndex)")
             return
         }
-
+        // N43 — K12 atomic handoff (CF-5 fix). All writes — K7 animation
+        // removal, contentHost.transform reset, height extension, AND camera
+        // recentering (which writes sublayerTransform) — must be ONE
+        // CATransaction.commit so no intermediate render frame surfaces.
+        // Under the nav pivot, this becomes the moment scale transfers from
+        // .transform (K7) to .sublayerTransform (camera); without atomicity
+        // there's a frame where both are at chat-rest values (compound-scale)
+        // or both are at identity (visible cell-rest snap). Nested CATransaction
+        // is reentrant-safe in CoreAnimation; centerCameraOnActiveCell's inner
+        // suppression composes into the outer boundary.
         CATransaction.withSuppressedActions {
             clearCaneCurveAnimations()
             resetContentHostTransform()
             clearChatRestCenterLabelTransientState(on: cell)
             extendCellToChatRest(cell: cell)
+            centerCameraOnActiveCell(cell: cell)
         }
-        // setCamera wraps in its own suppressed CATransaction; calling OUTSIDE
-        // the inner block avoids nested transactions.
-        centerCameraOnActiveCell(cell: cell)
     }
 
     // MARK: - Normalize helpers (P11.1 SRP per helper)

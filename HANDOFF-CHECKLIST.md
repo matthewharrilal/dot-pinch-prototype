@@ -9335,6 +9335,1014 @@ Applied in `TimelineCanvas.swift` as a computed property right after `currentCan
 
 
 
+## §46 — Gesture vs reference frame analysis + substrate-level reframe (2026-05-25)
+
+**Source artifacts:**
+- `_frames/dot_pinch.mov` — reference (the target phenomenology)
+- `_frames/gesture.mov` — our current implementation (12MB, 802×1794, 240fps slow-mo, 14.17s)
+- Frames extracted at 4-8s window, 15fps effective rate, 60 frames each:
+  - Reference: `/tmp/dot_pinch_frames/frame_NNNN.png`
+  - Gesture: `/tmp/gesture_frames/frame_NNNN.png`
+
+**User-supplied design vocabulary (received 2026-05-25 during execution turn):**
+
+The user provided two substantial design expositions (the "4-stage relay" and the "encapsulation/camera-pullback" prose), then a third refinement ("room uncovered" — the cell never moved; only the camera moved). The third refinement supersedes the first two where they conflict. §46 is written against the third (most recent) framing.
+
+
+### §46.0 — Substrate-level reframe: cell is static, only the camera moves
+
+§43 measured trajectories under the assumption that the cell is an ANIMATED OBJECT — its height extends, its bounds change, its content fades, its position migrates. §44 wired drivers for each of those animations. §45 traced root causes of those drivers.
+
+**The user's room-uncovered framing inverts this entirely.** The cell is NOT animated. The cell occupies its slot in the underlying list at all times; its bounds, position, and content are CONSTANT throughout the gesture. What changes is the CAMERA — its zoom scale and translation. The chat-rest state is the camera zoomed in so far that the cell's edges sit past the bezel and the cell appears to fill the entire viewport. The cell-rest state is the camera at its natural resting zoom, where the cell is visible at its natural size with surrounding cells and gradient framing.
+
+The perceptual "stages" the eye experiences (text shrinks → text becomes texture → container edges arrive → labels appear) are NOT separately animated phases. They EMERGE from the camera crossing specific zoom thresholds on a static scene:
+- Text appears smaller as camera zooms out (single linear consequence)
+- Cell's left/right/bottom/top edges become visible as camera-zoom retreats past the bezel — each edge "arrives" at the moment the camera-zoom threshold is crossed
+- The upper neighbor card appears when the camera has zoomed out far enough to expose the slot above
+- Labels appear as labels (different from chat content) because they're a separate UI element rendered at cell-rest scale, fading in as camera reaches close enough to cell-rest scale to make them legible
+
+**The "settling" perceived in the closing phase** is the camera decelerating to its rest distance — NOT the cell finding its slot. The cards appearing to spread apart is more gradient becoming visible as the camera retreats further.
+
+**Hotel-hallway metaphor (user-provided):** none of the doors moved; the hallway didn't get larger; **you** moved. The "settling into place" you experience is you arriving at the comfortable viewing distance, not the door arriving at its frame.
+
+**Two competing mental models the user surfaced:**
+- (A) "The chat-cell settles into its slot" → implicitly a TRANSFORMATION model (chat becomes a card; chat and card are distinct objects with a before-and-after).
+- (B) "The camera comes to rest at a wider view" → implicitly a NAVIGATION model (chat IS the card; gesture is camera motion; same artifact, different vantage).
+
+The motion in `dot_pinch.mov` is engineered for reading (B). Our current implementation enacts reading (A) via separately-animated cell extension + content fade + spring settles.
+
+
+### §46.1 — Five testable visual signatures (from user prose)
+
+Signatures distinguish (A) transformation from (B) navigation:
+
+| # | Signature | (B) navigation predicts | (A) transformation predicts |
+|---|---|---|---|
+| 1 | Edge arrival in screen-space registration | Cell's edges appear EXACTLY where the chat surface was — at the bezel — and retract inward as camera zooms out. Edges arrive in the order LEFT+RIGHT → BOTTOM → TOP (top is anchored near top of list position, falls last). | Edges appear at arbitrary positions because new bounds are being established. |
+| 2 | Corner radius identity | Rounded corners that emerge during gesture have the SAME radius as the destination cards. Continuity of identity. | Corner radius interpolates from some starting value (e.g., 0 at chat-rest) to a different ending value. |
+| 3 | Destination placeholder presence | NONE. No ghost outline, alpha-zero slot, or dotted line marks the cell's destination. The cell occupies its position throughout. | A placeholder visible during transit (where the cell will land). |
+| 4 | Card duplication / overlap | NONE. Exactly one chat-cell across all frames. No swap-under-blur of two distinct objects. | Two objects briefly co-exist (source fades out as destination fades in). |
+| 5 | Neighbor entry mechanism | Upper neighbor's BOTTOM EDGE appears from off-screen, slides into view as camera retreats. Other cells are uncovered, not created. | Neighbor materializes in place (alpha 0 → 1) or is created at gesture commit. |
+
+
+### §46.2 — Reference (`_frames/dot_pinch.mov`) signature validation
+
+Frame-by-frame validation of the 5 signatures in the reference (60-frame extraction from 4-8s window):
+
+| Frame | Gesture % | Observation |
+|---|---|---|
+| 1 | 0% | Chat-rest: text fills viewport edge-to-edge, no visible cell edges, atmospheric gradient hints at very top. Cell's bounds are PAST the bezel — cell IS the viewport. |
+| 5–10 | 5–15% | Text barely smaller; subtle reorganization (slightly more content fits at top). Camera zoom barely engaged. |
+| 15 | 25% | More earlier text visible at top (chat scrolled-position is exposed by camera zoom-out). Sides still flush with bezel. |
+| 20 | 33% | First subtle hint of side margins appearing (gradient bleeding in from left/right edges). |
+| 25–30 | 42–50% | Text crossed illegibility threshold (visible as ghosting/dispersal). Chrome `↙` + `...` arrives top-left + top-right. Bottom gradient becomes prominent. |
+| 37 | 62% | **Both cards visible.** Chat-cell's silhouette resolved (rounded corners, clear edges). Upper neighbor card slid down from off-screen. Neither labeled yet. NO duplication. NO placeholder. Atmospheric gradient surrounds both cards. |
+| 45 | 75% | Labels fade in on BOTH cards. "Thursday, Jun 20 / Raffi's introduction letter..." on upper card; "Today" on lower (active) card. Labels are caption-type text, NOT shrunk versions of chat content. |
+| 52–60 | 87–100% | Cards continue to settle minimally; gradient breathing room widens (camera continuing to retreat). Final composition stable. |
+
+**Signatures 1–5 all CONFIRMED in reference.** The motion is engineered for navigation reading. The cell never leaves its slot; the camera moves over the static scene.
+
+
+### §46.3 — Implementation (`_frames/gesture.mov`) divergence diagnosis
+
+Frame-by-frame diagnosis of our current implementation (60-frame extraction from 4-8s window):
+
+| Frame | Gesture % | Observation | Divergence from reference |
+|---|---|---|---|
+| 1 | 0% | Multi-message chat-rest. Composer pill at bottom. NO atmospheric gradient visible. Uniform light-gray background. | **Reference has atmospheric peachy/pinkish gradient at chat-rest.** Ours is uniform. |
+| 15 | 25% | Essentially identical to frame 1. Minimal visible progression. | **Reference shows visible text shrinkage by this frame.** Ours: no visible motion. |
+| 30 | 50% | Still showing essentially chat-state — chat content visible, composer visible, cursor visible. Minimal scaling. | **Reference at 50% has text fully illegible + chrome arrived + gradient prominent.** Ours: text still legible, no chrome onset visible. |
+| 45 | 75% | **Figure conflict** — three figures simultaneously: (a) chat content dimmed but visible, (b) "Yesterday" label appearing AT THE TOP of the chat content (NOT as a destination card label), (c) emerging upper card with partial "...workout suggestions" text. | **Reference at 75% has labels as labels on already-formed cards. Ours: label appears DURING chat fade, overlapping content.** Three-figure violation. |
+| 60 | 100% | Cell-rest reached but: active cell extends most of viewport (too tall), chrome on top-right instead of top-left, multiple cards visible with text overlap/dimming, dots indicator visible mid-cell. | **Reference cell-rest has compact cells with full atmospheric framing. Ours: active cell too tall, chrome location wrong, dimmed neighbor content.** |
+
+**Specific signature failures:**
+
+1. **Edge arrival in screen-space registration — FAILS.** Our cell's edges don't visibly arrive at the bezel; the cell appears to be HEIGHT-EXTENDING (filling more vertical space) rather than CAMERA-ZOOMING-OUT (exposing edges that were past the bezel).
+
+2. **Corner radius identity — UNDETERMINED (likely fine).** We use a constant `cornerRadius` on CellView's layer (CV:184 sets it at init); the cell's silhouette inherits it. This signature is probably preserved by accident — but only because we DON'T animate cornerRadius.
+
+3. **Destination placeholder — UNDETERMINED visually, but architecturally PRESENT.** The TimelineCanvas list-layout pass positions cells at their natural positions regardless of active state. So neighbors exist in their final positions throughout. This is correct — but the appearance/disappearance of those neighbors during the gesture is controlled by alpha (`updateEdgeMaskAlphas` peak curve per §45.4), which is a SEPARATE animation, not a camera consequence.
+
+4. **Card duplication — FAILS observationally.** Frame 45 shows three figures (chat content + Yesterday label + emerging upper card) competing simultaneously. The label is appearing as a SEPARATE FADE-IN (driven by setCamera alpha curves) during the chat content's fade-out, producing the figure conflict.
+
+5. **Neighbor entry — FAILS at the substrate level.** Neighbor cells fade in/out via `updateEdgeMaskAlphas` and `updateNeighborTranslations`. They don't "enter from off-screen as camera retreats"; they're rendered in place with alpha animations.
+
+
+### §46.4 — Root-cause: substrate model mismatch (NOT a tuning bug)
+
+The current substrate enacts the TRANSFORMATION reading (model A). The reference enacts the NAVIGATION reading (model B). The mismatch is at the substrate level, NOT at the tuning level — **no amount of parameter retuning will produce signature compliance.**
+
+**Specific substrate violations:**
+
+| Substrate piece | Current behavior (model A) | What model B requires |
+|---|---|---|
+| `extensionAnimator` (TC:80) | Animates `cell.heightConstraint.constant` between naturalH and viewport.height. Enacts "cell grows/shrinks." | Cell height is CONSTANT (always naturalH). No height extension. |
+| `cameraAnimator` (camera Y-translation) | Animates `camera.translation` (Y only). | Camera animates BOTH `scale.xy` (zoom) AND `translation` (Y). Currently we have translation-only. |
+| `contentHost.layer.sublayerTransform` (TC:applyCameraTransform) | Translation only. | Translation + scale. The chat-rest state = high scale.xy; cell-rest = scale.xy = 1.0. |
+| `applyChatContentDistanceFade` (CV:404-414) | Z-translation via m34 perspective on chatContent. | DELETED. Text appears smaller as a natural consequence of camera zoom; no separate per-content transform needed. |
+| `applyCellRestChromeAlphas` / `applyChatRestAffordanceAlpha` (CV:386, 393) | Smoothstep alpha curves driven by per-cell progress. | NOT NEEDED. Chrome `↙` `...` are subviews of the cell that are simply RENDERED at all times. At chat-rest (camera zoomed in), they're past the bezel. At cell-rest (camera zoomed out), they're visible. No alpha curve needed. |
+| `applyHorizontalInsetForProgress` (CV:417-426) | Animates `widthConstraint.constant` and `leadingConstraint.constant` based on progress (cell goes from inset to edge-to-edge). | NOT NEEDED. Cell width is CONSTANT (cell-rest width). At chat-rest camera-scale, the cell occupies more pixels and visually appears edge-to-edge because the bezel is past the cell's bounds. No constraint animation. |
+| `updateEdgeMaskAlphas` (TC:293) | Peak-curve alpha on canvas edge masks. | NOT NEEDED in this form. The atmospheric gradient is a canvas-layer that's always present; the camera-zoom determines how much of it is visible. |
+| Labels (`labelStack.alpha`, `chatRestCenterLabel.alpha`) | Smoothstep alpha curves competing with content during transition. | Labels are subviews of the cell. They fade in based on CAMERA-ZOOM crossing a legibility threshold — invisible while camera is zoomed in (chat-rest); legible when camera is at cell-rest zoom. The threshold-crossing emerges from camera scale crossing the legibility value. |
+
+
+### §46.5 — Implementation path (architectural pivot)
+
+Moving to the navigation substrate requires substantial rework. Categorized by load-bearing depth:
+
+**Tier 1 — Substrate fundamentals (CANNOT be incremental):**
+- Replace `cameraAnimator` (Y-translation-only) with a camera primitive that handles BOTH translation AND scale. The `Camera` value type currently only has `translation: CGFloat`. Needs `scale: CGFloat` (uniform 2D, sx=sy).
+- `applyCameraTransform` (TC:470) currently mutates `contentHost.layer.sublayerTransform` for translation. Needs to apply scale + translation as one matrix.
+- `extensionAnimator` becomes redundant for chat-rest extension. CELL HEIGHT IS CONSTANT. Delete or repurpose.
+- The `Camera` value type (TC:25) gets a new `scale` field. All `Camera.init(translation:)` call sites need to pass scale (default 1.0 for backwards compat during pivot).
+
+**Tier 2 — Per-cell mechanism deletions:**
+- Delete `applyChatContentDistanceFade` (CV:404-414). chatContent renders at constant scale within the cell; camera handles the apparent shrink.
+- Delete `applyHorizontalInsetForProgress` (CV:417-426). Cell width is constant.
+- Simplify `applyCellRestChromeAlphas` + `applyChatRestAffordanceAlpha`: chrome is always rendered; the chat-rest camera-scale makes it sit past the bezel (invisible-by-occlusion); cell-rest camera-scale exposes it. Or: keep an alpha curve, but drive it from the camera-zoom value crossing a legibility threshold, not from per-cell progress.
+
+**Tier 3 — Layout pass adjustments:**
+- `accumulatedYs()` (TC:579-599) — cells positioned by accumulating heights with cellSpacing. This STAYS. Cells are always at their natural positions in the layout.
+- `updateNeighborTranslations` (TC:734-752) — gap-preservation via per-cell transforms. Becomes UNNECESSARY because cells don't grow/shrink under navigation. Delete.
+- `pageFrameForCell` (TC:648) — returns cell's natural page-coord position. STAYS.
+
+**Tier 4 — Engagement state machine:**
+- `activeCellIndex` (TC:35) — semantically becomes "the cell the camera is currently zoomed in on." Still needed.
+- `springToCellRest` (TC:1693) — repurposed to spring CAMERA SCALE back to 1.0 (and translation to cell's natural y), not cell height.
+- `playPinchToCellsMorph` (TC:1646) — Phase 11 cinematography. Reframed as MorphChoreographer-driven camera animation with sin-bell scale + translation. Currently uses sin-bell on contentHost.layer.transform — needs to operate on the camera's scale parameter.
+- `tryClearActiveCellAtRest` (TC:1738) — predicate becomes (camera scale ≈ 1.0 AND camera y ≈ cell's natural y), not (camera ≈ target AND extension ≈ naturalHeight).
+
+**Tier 5 — RevealCoordinator (forward direction):**
+- Currently performs cross-fade between `chatVC.view` (outside canvas) and `chatContentContainer` (inside cell) at handoff.
+- Under navigation: `chatVC.view` becomes UNNECESSARY for chat-rest rendering — `chatContentContainer` (already inside the cell) is the chat-rest rendered surface, just at camera-scale magnification. ChatVC may still be needed for keyboard/composer interaction during chat-rest (UIResponder chain), but the rendering handoff goes away.
+- The blur curtain stays — it's now masking the camera-zoom transit (not the cross-fade between two render surfaces).
+
+**Tier 6 — Tests + Maestro:**
+- Existing tests assume current substrate. Many will need rewriting under navigation substrate.
+- Maestro flows for visual validation against `dot_pinch.mov` reference frames at p ∈ {0.0, 0.25, 0.50, 0.62, 0.75, 1.0}.
+- Per `feedback_visual_testing_every_wave.md` memory: visual gate is non-negotiable for this scale of change.
+
+
+### §46.6 — Confidence + open questions
+
+**Confidence:** HIGH on the diagnosis (substrate model mismatch, not tuning). The 5 testable signatures are concrete and the reference video clearly enacts model B. Our gesture video clearly enacts model A.
+
+**Open questions for user decision before Tier 1 implementation begins:**
+- Q1: This is a substantial architectural rework (Tier 1 is irreducible — Camera value type + sublayerTransform application must change atomically). Scope-wise, is this a Wave 14 commitment, or does the user want a smaller incremental approach (e.g., introduce camera.scale as additive, transition gradually)?
+- Q2: The forward direction (cell → chat) is also affected — `extensionAnimator` is shared. Under navigation, forward direction is "camera zooms in to cell-scale 4.5×, translates to cell's y position." The cane curve cinematography may need re-expression in camera-scale + camera-translation rather than cell.height + camera.y. Does forward need to be touched in this wave?
+- Q3: RevealCoordinator's role under navigation: keep for keyboard/composer (UIResponder chain), or absorb entirely? The chat content is already inside the cell as `chatContentContainer` — chatVC may be dead weight under navigation.
+- Q4: The current code accumulates years of evolution under model A (waves 0–7, plus the analysis waves 13). Should we tag the current main as `model-A-final` or `pre-navigation-pivot` before pivoting? Preserves a return point if the pivot proves harder than expected.
+- Q5: §43.5's empirical measurements (spacing converges from 120 → 21px) were measurements of the CAMERA's effect on apparent cell positions, not measurements of cells changing their layout. Under navigation, the 120 → 21 trajectory is fully explained by camera-scale decreasing — no need for `listSpacingExtension`. Confirm we can delete that work?
+
+
+
+## §47 — Root-cause traces of §46.5 implementation tasks (2026-05-25)
+
+User invoked /root-cause-tracing comprehensively across §46.5's tiers PLUS additional integration concerns the initial 6-trace decomposition missed. Per the skill protocol: 9 parallel agents dispatched on T1-T9, with orchestrator-side cross-cutting framework + dependency map.
+
+**Status at this writing:** T1-T6 complete (Camera substrate; per-cell deletions; layout simplifications; spring + cinematography; RevealCoordinator; tests + Maestro). T7-T9 still running (gesture handlers; pivot math; cane curve K7).
+
+§47 supersedes §46.5's action list where the traces revealed gaps, latent bugs, or architectural inversions not surfaced by the initial decomposition.
+
+
+### §47.0 — Cross-trace framework (orchestrator Wave 1)
+
+**Shared bedrock across all 6 completed traces:** the dual-representation architecture (chatVC.view sibling-of-canvas + chatContentContainer inside cell) is artifactual of model A. Under navigation, only one representation has a referent (chatContentContainer); the other becomes phantom. Every HOT branch in T1-T6 ultimately resolves to this bedrock.
+
+**Dependency map (load-bearing order):**
+
+```
+Camera value type extension (Camera.scale + CameraVelocity.scale + Camera precondition)
+   ↓
+applyCameraTransform pivot-aware matrix (T1: T(-pivot) · S · T(+pivot) sandwich)
+   ↓
+scale-aware pagePoint/pageRectFromViewportRect helpers (T1, T3 — hit-test + cull)
+   ↓
+┌───────────────────────────────────────────────────────────────┐
+│ extensionAnimator RENAMED to cameraScaleAnimator              │
+│ (NOT deleted — preserves AnimationController registration)    │
+└───────────────────────────────────────────────────────────────┘
+   ↓
+springToCellRest writes camera.scale + camera.translation (T4)
+   ↓
+tryClearActiveCellAtRest predicate becomes 3-condition (T4 + latent bug fix)
+   ↓
+┌──────────────────────────────────────────────────────────┐
+│ PAIRED CHANGE: applyHorizontalInsetForProgress deletion   │
+│ + ChatContentContainer constraint redesign (T2 CF#1)     │
+│ (otherwise composer goes OFF-SCREEN at chat-rest)        │
+└──────────────────────────────────────────────────────────┘
+   ↓
+setCamera trivialized to camera-scale legibility threshold writer (T2 CF#3)
+   ↓
+ChatViewController DELETED + RevealCoordinator REDUCED (T5)
+   ↓
+Forward direction CANE CURVE rework (T4 E6 — compound-scale falsifies orthogonality)
+   ↓
+Test infrastructure: ManualAnimationDriver + golden-frame commit + visual-diff (T6)
+```
+
+**Critical sequencing constraint** (T3): Tier 3 deletions ship in the SAME WAVE as Tier 1 scale-aware viewport helpers. Shipping deletions first leaves `cellIndices(in: visiblePageRect)` returning wrong ranges at `camera.scale ≠ 1`.
+
+**Critical scope expansion** (T4): the brief's "reverse-only scope" cannot survive contact with the substrate pivot. **E6 (forward direction touch) is CONFIRMED.** The cane curve must reframe via Option α — `CurveAnimator<Camera>` with the 4-component additive decomposition preserved in its `apply()` function.
+
+
+### §47.1 — Trace T1: Camera substrate (CRITICAL FINDINGS)
+
+**Verdict:** the substrate pivot is K9-level (new keystone). All 5 navigation signatures cannot be matched by tuning alone — substrate change is irreducible.
+
+**Critical findings:**
+
+1. **`extensionAnimator` should be RENAMED to `cameraScaleAnimator`, not deleted.** Preserves AnimationController registration topology + spring profile + completion plumbing + valueChanged wiring. K3 (single CADisplayLink) untouched.
+
+2. **m34 isolation confirmed.** `canvas.layer.sublayerTransform.m34 = -1/1000` and `contentHost.layer.sublayerTransform` are DIFFERENT layers — physically separate matrices. Adding scale to contentHost's sublayerTransform does NOT disturb m34. K2 preserved automatically.
+
+3. **CRITICAL — §45.6's widthSpringAnimator is DEAD BEFORE WRITTEN.** Width is not a property under navigation; it's an effect of camera-scale. §43.6's measured "width overshoot" signature was a misreading of model-A measurements through a model-B substrate. Need to re-interpret: was the overshoot real isotropic overshoot we now read as "everything overshoots together," or an artifact of width-only measurement? If real, scale spring needs damping &lt; 1.0 (contradicts §43.7 height-monotonic finding). **OPEN QUESTION**.
+
+4. **TC:1719 invariant renames cleanly:** `cameraScaleAnimator.spring.response == cameraTranslationAnimator.spring.response`. Damping may differ per axis if data warrants (§43 reinterpretation needed).
+
+5. **Matrix composition: pivot must be `pageFrameForCell(activeCellIndex).midY` in page coords, encoded via `T(-pivot) → S → T(+pivot)` sandwich.** NOT the contentHost.layer's anchorPoint. The active cell changes per gesture — moving anchorPoint per-frame is fragile.
+
+6. **16 sites touch extensionAnimator** (TC:80, 133, 146-148, 1000, 1031, 1241, 1419-1429, 1472-1486, 1492, 1719-1739, 1752). Surgical rename + a few semantic adjustments at: `applyExtensionTick` (TC:1240) → renames to `applyCameraScaleTick`; `pinchState.initialExtension` → `pinchState.initialCameraScale`; `extensionValue` checks in `tryClearActiveCellAtRest` → `scaleValue`.
+
+7. **`pageRectFromViewportRect` (TC:450) + `pagePoint(fromViewport:camera:viewportCenter:)` (TC:494) must become scale-aware.** Currently pure-translation inverse. Hit-test math (`cellIndex(atPagePoint:)`, `cellIndices(in: visiblePageRect)`) depends on this — silent breakage under navigation if not updated.
+
+8. **`onCameraChanged?(camera, bounds)` callback (TC:1251)** is part of TimelineCanvas's public API. Camera value-type changes shape → callback consumers update (V2RootViewController is the main subscriber).
+
+**Action items:**
+- N20: Add `Camera.scale: CGFloat` field with precondition (finite, &gt; 0)
+- N6: Add `Camera.scale` to `pagePoint(fromViewport:)` inverse math
+- N1a: Rename `extensionAnimator` → `cameraScaleAnimator` (preserve plumbing)
+- N1b: Add `cameraTranslationAnimator` (formerly the inner of cameraAnimator)
+- Reinterpret §43.6 width overshoot against model-B; resolve damping for cameraScaleAnimator
+
+
+### §47.2 — Trace T2: Per-cell deletions (CRITICAL FINDINGS)
+
+**Verdict:** Tier 2 has a hidden paired-work requirement — applyHorizontalInsetForProgress deletion ALONE puts the composer OFF-SCREEN. The deletion must ship paired with ChatContentContainer constraint redesign.
+
+**Critical findings:**
+
+1. **CF#1 (KEYSTONE) — Composer off-screen bug.** `ChatContentContainer.activateCrossViewConstraints` (CCC:102-158) captures `parentView.safeAreaInsets` at activation; comment at CCC:94-98 explicitly asserts "chatContent fills the cell which at chat-rest exactly fills the viewport (heightConstraint = bounds.height)." Under navigation, cell.bounds.height = naturalH ≈ 438pt; chatContent fills only that. Composer's bottomAnchor at `chatContent.bottom - (safeBottom+12)` resolves to position 438 - 46 = 392pt local → at 5× camera-scale, renders 755pt BELOW viewport center → OFF-SCREEN. **The fix is NOT keeping inset animation; it's redesigning chatContent's constraints to work in cell-natural coords and trusting camera-scale to position.**
+
+2. **CF#2 — Chrome visibility math.** User's "chrome past the bezel at chat-rest" hypothesis HOLDS for edge-positioned chrome (labelStack at top, pinchGlyph at bottom, chatRestAffordance at top-right — all 5× magnified put them off-screen). But chatRestCenterLabel is CENTERED — at 5× magnification it sits at viewport center, magnified to 150pt font from natural 30pt. This is CORRECT for chat-rest (it's THE day-marker shown big and central). The counter-scale transform in `performMorphChromeTransition` (CV:526) and `snapToChatRestChromeEndState` (CV:522) is DEAD under navigation — currently un-magnifies; should be deleted.
+
+3. **CF#3 — `setCamera` survives but trivializes.** Doesn't get deleted; reduces to ~6 lines of camera-scale legibility threshold writes (chrome `↙`, `...` are at chat-rest size at all camera-scales — readable only when camera-scale ≤ threshold). Token: new `AlphaCurve.legibilityThreshold`. Per-cell `pushCameraToCells` (TC:714-729) preserves its iteration topology.
+
+4. **CF#4 — Ownership matrix expansion to 4 writers.** chatContentContainer.alpha has 4 writers under model A (class init, RevealCoordinator atomic swap, setCamera per-tick, lazy install). Under navigation, only init + lazy install remain (alpha=1 always; the camera handles apparent visibility).
+
+5. **CF#5 — chatRestCenterLabel held CABasicAnimation phantom (§45.4 carryover).** Fixed by Tier 4 (MorphChoreographer rewire), NOT by Tier 2 deletions. `resetMorphState` (CV:489-493) already removes the animation on reverse-gesture entry — verify call sites.
+
+6. **Phantom orphans to clean up:** `computeProgress` (CV:368-380, returns 0.0 always under nav), `viewport` parameter on setCamera, `naturalHorizontalInset` (CV:176), `pageWidth` (CV:177). 6 of 7 AlphaCurve constants become orphans; ONLY `chatContentZMax` STAYS (MorphChoreographer's sin-bell Z arc keystone dependency — Tier 4 reframing pending).
+
+**Action items:**
+- N1: ChatContentContainer constraint redesign (PAIRED with applyHorizontalInsetForProgress deletion)
+- New `AlphaCurve.legibilityThreshold` token
+- Trivialized `setCamera` → camera-scale threshold writer
+- Delete counter-scale transforms in CV:522, CV:526 (Tier 4 rewire)
+- Delete orphans: computeProgress, viewport param, naturalHorizontalInset, pageWidth, 6 AlphaCurve tokens
+
+
+### §47.3 — Trace T3: Layout simplifications (CRITICAL FINDINGS)
+
+**Verdict:** Tier 3 deletions are mostly clean (truly phantom under navigation) but have a hard sequencing constraint with Tier 1.
+
+**Critical findings:**
+
+1. **CRITICAL SEQUENCING — Tier 3 deletions ship IN THE SAME WAVE as Tier 1.** Without scale-aware `pageRectFromViewportRect`, `cellIndices(in: visiblePageRect)` reports wrong ranges at `camera.scale ≠ 1`: over-instantiation at chat-rest (cull margin too generous when only 1 cell visible) AND under-instantiation if zoom-out beyond cell-rest (visible holes).
+
+2. **Math closure (B7):** `cellSpacing × camera.scale = §43.5's empirical trajectory`. At chat-rest scale 4.1×: 24×4.1 = 98.4pt ≈ 110-130px (matches frame-37's "120px" within measurement error). At cell-rest scale 1.0×: 24pt = 21px device-pixel on Retina (matches frame-60's "21px" exactly). **No inter-cell spacing animation needed; entire 120→21 trajectory is camera-scale consequence. listSpacingExtension confirmed deletable.**
+
+3. **`updateNeighborTranslations` (TC:741-758) all 6 callers either upstream-deleted, vestigial, or phantom.** Clean deletion.
+
+4. **`CellView.followActive` + `resetFollowTransform` + `NeighborPosition` enum orphan** when updateNeighborTranslations deletes.
+
+5. **`listSpacingExtension` (TC:324-326) is PHANTOM today — zero callers** (added in anticipation of consumer never wired). Clean phantom delete.
+
+6. **`accumulatedYs()` cache survives strengthened.** Under navigation no constraint mutations invalidate it; static-scene principle reinforces.
+
+7. **`restoreNaturalSiblingOrder` deferred decision.** Survives or dies based on Tier 1's `bringSubviewToFront` discipline for the active cell during morph. Decide during Tier 1 implementation.
+
+8. **B8 frontier — chat-rest scale value derivation.** Math: at scale 5×, cell N-1's bottom edge sits 78pt BELOW viewport top (not off-screen as expected). The reference's "no neighbor visible at chat-rest" outcome requires scale &gt; 5× OR a different math. The actual `chatRestScale` is a tuning parameter, not a derivation; needs reference-video pin-down.
+
+**Action items:**
+- N5: Scale-aware `pageRectFromViewportRect` + `pagePoint(fromViewport:)` (PAIRED with T1)
+- Delete `updateNeighborTranslations`, `CellView.followActive`, `resetFollowTransform`, `NeighborPosition`, `listSpacingExtension`
+- Defer `restoreNaturalSiblingOrder` decision to Tier 1 outcome
+- Empirically determine chatRestScale value
+
+
+### §47.4 — Trace T4: Spring + cinematography (CRITICAL FINDINGS — T9 reconciles E6)
+
+**Verdict:** the apparent forward-direction-must-be-touched conclusion (T4's E6 escalation) is RESOLVED by T9's Regime I — K7 stays on `contentHost.layer.transform`, camera.scale stays dormant (=1.0) during forward, with a handoff transfer at normalize. See §47.9 for full reconciliation.
+
+**Critical findings:**
+
+1. **§43.7 critical damping transposes to camera-scale.** `cameraScaleAnimator` inherits ζ=1.0 (no scale overshoot — vestibular wobble would break the "rooms" reading).
+
+2. **TC:1719 invariant renames cleanly:** `cameraScaleAnimator.spring.response == cameraTranslationAnimator.spring.response`. Damping may differ per axis; response shared (phase-locking preserved).
+
+3. **`MorphChoreography` struct changes (MX:4-15):** `startHeight/endHeight` DELETE; `startScale/endScale` ADD; `unifiedArcY/Z` magnitudes DELETE (K8 retirement). `chatRestFactor` → `chatRestCameraScale` semantic rename. `centerLabelCounterScale` semantically changes from cell-height-ratio to camera-scale-ratio.
+
+4. **K8 (sin-bell arc) LIKELY RETIRES** under §46.0's 2D-flat commitment. Reference shows no Z-pop. CONFIRM with user (escalation E7).
+
+5. **LATENT BUG SURFACED (T4 + §45.9):** `tryClearActiveCellAtRest`'s `cellRestTarget` is hardcoded at TC:1750 (`lastCellRestScrollY + bounds.height/2`); cancelled-from-chat-rest path computes wrong target — predicate never satisfies → activeCellIndex never clears → hang. **Exists today, pivot must fix** (capture target in closure, not recompute). Escalation E8.
+
+6. **Pinch.scale → camera.scale inverse-ratio mapping:** `camera.scale = pinchState.initialCameraScale / recognizer.scale`. Dimensionally correct (preserves multiplicative-space).
+
+7. **R44 per-direction damping** survives renamed. WaveR44 test consumers shift from extensionAnimator → cameraScaleAnimator; parameter values unchanged.
+
+8. **§45.6 widthSpringAnimator confirmed DEAD before written** (cross-validated with T1).
+
+**Action items:**
+- N1c: Add `cameraScaleAnimator` to `springToCellRest` (TC:1693)
+- N1d: Update `tryClearActiveCellAtRest` predicate to 3-condition (camera-scale ≈ 1.0, camera-translation ≈ cell.midY, no in-flight animator)
+- N3: Fix cancelled-target latent bug — capture target in closure
+- N4: K8 retirement decision (E7 escalation)
+- New MorphChoreography struct shape
+- Reinterpret/discard width-overshoot signature
+
+
+### §47.5 — Trace T5: RevealCoordinator under navigation (CRITICAL FINDINGS)
+
+**Verdict:** `ChatViewController` is FULLY DELETABLE. `RevealCoordinator` reduces to ~50 LOC (post-camera-arrival hook). Most of RC becomes phantom under navigation.
+
+**Critical findings:**
+
+1. **KEYSTONE: ChatViewController is duplicate-implementation of ChatContentContainer.** Both host headerLabel, scrollView/bubbleStack, composer. ChatVC exists because model A needed an "outside-canvas" surface; model B has no use for it. Delete.
+
+2. **`performAtomicAlphaSwap` (RC:209-221) is mostly PHANTOM.** 4 of 5 writes have no referent (chatVC.view.alpha, chatVC.view.isUserInteractionEnabled, canvas.alpha, chatContent.alpha all become no-ops). Only the `pinchRecognizer.isEnabled = true` survives — and that should be a DERIVED property of camera-scale (recognizer enabled iff camera at chat-rest ± ε), not a coordinator-commanded value.
+
+3. **`RC.transferState` (RC:197-205) DUPLICATES `ConversationStateController.bind(to:)` (CSC:42-47).** Under navigation, only the latter is needed. Delete RC.transferState + ChatVC.captureTransientState + ChatVC.bindTransientState + TransientStateSnapshot.
+
+4. **HandoffPhase recovery (RC:24-31, 273-303) duplicates substrate's `EngagementState` machinery.** Scene-deactivation recovery routes through cancelInFlightAnimations + completion ladder; HandoffPhase phases (presenting, crossFadeStarted, crossFadeComplete, blurFadeOutStarted) have no referent under navigation.
+
+5. **UIViewPropertyAnimator violates K3** (single CADisplayLink keystone). Model A masked this; model B exposes it. If blur curtain survives, it MUST move to substrate-driven timing (CABasicAnimation on alpha keyed to camera-scale, or per-frame derivation in applyCameraTransform).
+
+6. **NEW CONCERN: first-responder timing relative to camera-arrival.** Today keyed to crossFade completion. Under navigation, must engage when camera reaches chat-rest scale ± ε.
+
+7. **FRONTIER: blur curtain fate.** Reference video may have a perceptual blur at frame 25-30 (illegibility threshold) or just atmospheric gradient — needs reference-video observation. If kept, MUST be substrate-driven (per CF-2 above).
+
+**Action items:**
+- N7: DELETE ChatViewController (cascade: chatVC.view, TransientStateSnapshot, captureTransientState, bindTransientState, mapTextRange, detachAndReleaseChatVC)
+- N8: REDUCE RevealCoordinator to <50 LOC (post-camera-arrival hook for first-responder + recognizer-enable-via-derived-state)
+- N9: Decide blur curtain fate (FRONTIER — reference-video observation)
+- N10: First-responder camera-arrival hook
+- Move state migration to single point: `ConversationStateController.bind(to: ChatContentContainer)`
+
+
+### §47.6 — Trace T6: Tests + Maestro (CRITICAL FINDINGS)
+
+**Verdict:** 11 of 17 V2 test files structurally encode model-A assumptions and need REWRITE; 2 DELETE; 5 KEEP. UITests are substrate-opaque (KEEP all 5). Maestro flows substrate-opaque (KEEP all 6). New infrastructure required: ManualAnimationDriver + golden-frame commit + visual-diff harness.
+
+**Critical findings:**
+
+1. **DELETE entirely (model-A only purpose):** `Wave4bHeightExtensionTests`, `WaveR33SymmetricExtensionTests`, `Phase0Spike07AutoLayoutSolverCost`.
+
+2. **REWRITE preserving intent (~11 files):** Wave4dSpringSettleTests, WaveR1ProgressPointCaptures, WaveR11LifecycleAdversarialTests, WaveR12OptionsACVerification, WaveR31ZOrderInvariantTests, WaveR32NeighborPositionTests, WaveR34BoundaryEmergenceTests, WaveR35HitTestRegionsTests, WaveR36OverlapSignatureTests, WaveR41SubstrateCanaryTests, WaveR42PinchAnchorStabilityTests, WaveR44PerDirectionProfileTests.
+
+3. **CRITICAL CONTRADICTION in WaveR34:** asserts "rounded corners visible iff `cell.bounds.height < contentHost.bounds.height`" — under nav, `cell.bounds.height == naturalHeight` ALWAYS (statically true; tautology). Rewrite must shift from page-coord to viewport-coord comparison via `(cell.bounds × cameraScale)`.
+
+4. **NEW INVARIANT TESTS required** (file: `NavSubstrateCellInvariantTests.swift`):
+   - `testCellHeightConstantThroughoutPinch` — assert cell.heightConstraint.constant == naturalHeight throughout
+   - `testM34InvariantAcrossCameraOps` — assert m34 == -1/1000 after N camera ops (KVO canary)
+   - `testCameraWriteFunnelIsSole` — KVO `contentHost.layer.sublayerTransform`; assert observed-write-count == setCamera-call-count
+   - `testCameraScalePreconditions` — Camera(scale: 0/nan/-1) traps
+
+5. **NEW SIGNATURE TESTS** (file: `NavSignatureTests.swift`):
+   - Sig 1 edge arrival, Sig 2 corner radius identity, Sig 3 no placeholder, Sig 4 no duplication, Sig 5 neighbor page-y constant.
+
+6. **DETERMINISTIC SPRING SAMPLING INFRASTRUCTURE MISSING (HOT bottleneck).** AnimationController needs injectable Ticker; tests inject `ManualAnimationDriver`. Required for ~6 rewritten test files. New file: `Tests/Support/ManualAnimationDriver.swift`.
+
+7. **GOLDEN-FRAME SET MUST MOVE FROM /tmp TO REPO.** `Tests/Reference/dot_pinch/frame_NNNN.png` (60 PNGs, ~5MB). pHash comparison (Hamming distance ≤ 5/frame). New file: `Tests/Support/PHash.swift`.
+
+8. **CRITICAL — PinchGestureUITests.waitForCellList 3.5s sleep is brittle** (tuned to current springResponse=1.10s). Under nav with different settle time, may flake. Replace with predicate-poll on tryClearActiveCellAtRest semantics.
+
+9. **MAESTRO iOS 18 LOCK** (per `feedback_maestro_ios26_incompat`) inherited by visual-diff (reference baselines captured on iOS 18 sim; diff runs must use same sim).
+
+10. **VISUAL-DIFF HOOK runs at WAVE BOUNDARIES, not per-commit.** Add `scripts/visual-diff.sh` + manual review gate per `feedback_visual_testing_every_wave`.
+
+**Action items:**
+- N11: `Tests/Support/ManualAnimationDriver.swift` (Ticker protocol + manual driver)
+- N12: Commit /tmp/dot_pinch_frames/ → `Tests/Reference/dot_pinch/`
+- N13: `Tests/V2/NavSubstrateCellInvariantTests.swift`
+- N14: `Tests/V2/NavSignatureTests.swift`
+- N15: `scripts/visual-diff.sh` + `Tests/Support/PHash.swift`
+- N16: Rewrite WaveR34 per CF-1 (viewport-coord comparison)
+- N17: testM34InvariantAcrossCameraOps (KVO-based runtime canary)
+- N18: Replace PinchGestureUITests.waitForCellList sleep with predicate-poll
+- DELETE 3 model-A-only test files; rewrite ~11; keep 5+UITests+Maestro
+
+
+### §47.7 — Trace T7: Pinch gesture handlers (IN FLIGHT)
+
+Background agent still running. Findings will be appended when complete.
+
+
+### §47.8 — Trace T8: Pivot point math (CRITICAL FINDINGS)
+
+**Verdict:** PIVOT = (c) viewport-center in page coords (= `camera.translation` at any moment). Matrix: `T(viewportCenter) · S(s) · T(-camera.translation)` on `contentHost.layer.sublayerTransform`. m34 interaction is null for pure 2D scale.
+
+**Critical findings:**
+
+1. **PIVOT DECISION: (c) viewport-center.** Reference video shows non-centroid behavior (rejects Apple Maps style). Cell-center pivot (b) is mathematically equivalent to (c) when coupled but introduces fragility at engagement-state boundary (if activeCellIndex clears mid-gesture, pivot becomes undefined under (b); under (c) it's always defined).
+
+2. **MATRIX:**
+   ```swift
+   var t = CATransform3DIdentity
+   t = CATransform3DTranslate(t, 0, viewportCenter.y, 0)
+   t = CATransform3DScale(t, s, s, 1)
+   t = CATransform3DTranslate(t, 0, -camera.translation, 0)
+   contentHost.layer.sublayerTransform = t
+   ```
+   Reduces to current `T(viewportCenter.y - camera.translation)` at s=1.0 (backwards-compatible).
+
+3. **`camera.translation` is the state; pivot location is a derived consequence.** At `.began`, programmatically set `camera.translation = pageFrameForCell(activeIdx).midY` to lock the active cell to viewport-mid. Pivot math then automatically pivots around cell-center.
+
+4. **CENTROID is NOT the pivot.** It's the translation reference (camera.translation tracks user's drag). Independent concerns: translation tracks user drag; scale pivots around what camera.translation currently maps to viewport-mid.
+
+5. **m34 SAFETY CONFIRMED.** Pure 2D scale (z=0) through perspective m34 produces zero distortion. K2 untouched by navigation pivot.
+
+6. **`pageRectFromViewportRect` + `pagePoint(fromViewport:)` inverses MUST become scale-aware.** With (c) pivot: `p_page = (p_viewport - viewportCenter) / scale + camera.translation`. Hit-test correctness depends on this.
+
+**Action items:**
+- N20: `Camera.scale: CGFloat` with precondition (`> 0`, `.isFinite`)
+- N1e: applyCameraTransform 3-factor matrix composition
+- N6: scale-aware `pagePoint(fromViewport:camera:viewportCenter:)` + `pageRectFromViewportRect`
+- N6a: `cellIndex(atPagePoint:)` + `cellIndices(in: visiblePageRect)` inherit scale-awareness via the helper
+
+
+### §47.9 — Trace T9: Cane curve K7 survival (CRITICAL FINDINGS — RESOLVES T4's E6 ESCALATION)
+
+**Verdict: REGIME I (substrate fission) — K7 STAYS UNCHANGED. Forward direction does NOT need to be reworked.** This contradicts T4's E6 escalation and resolves it cleanly.
+
+**Critical findings:**
+
+1. **PROPERTY ISOLATION: K7 writes `contentHost.layer.transform`; camera (navigation substrate) writes `contentHost.layer.sublayerTransform`. DISTINCT properties on the same CALayer — they MULTIPLY mathematically but compose without interference.**
+
+2. **LOAD α vs LOAD β analysis:**
+   - **Load α** ("zoom magnitude" — the 4.92× scaling) — semantically belongs to camera under model B
+   - **Load β** ("cinematic curve identity" — the specific timing functions, the windupContribution=0.08, the additive composition producing the cane's distinctive trajectory) — semantically belongs to cinematography, independent of channel
+
+3. **REGIME I — substrate fission (RECOMMENDED + RESOLVES E6):**
+   - K7 stays exactly as today on `contentHost.layer.transform`
+   - `camera.scale` exists but is DORMANT (= 1.0) throughout forward direction
+   - Reverse direction (`playPinchToCellsMorph`, `springToCellRest`) is the SOLE consumer of camera.scale
+   - Forward visual identity (windup, zoomLanding, overshoot) PRESERVED EXACTLY
+   - K7 "each animation does a specific job" commitment intact
+   - User's "reverse-only scope" honored
+
+4. **THE HANDOFF (load-bearing addition).** At `normalize` step (end of forward morph, when canvas.alpha is at 0 between blur curtains), TRANSFER the held scale value: write `camera.scale = chatRestFactor` and `camera.translation = activeCell.frame.midY` BEFORE resetting `contentHost.layer.transform = CATransform3DIdentity`. This converts the held-on-`.transform` state into held-on-`.sublayerTransform` state. Without this transfer, the reverse-pinch sees `camera.scale = 1.0` while held `.transform = 4.92×` — incoherent.
+
+5. **REGIME III IS THE TRAP** (rejected). Splitting K7's scale animations to camera.scale while keeping translates on `.transform` breaks the K7 invariant — the `morphCentering` term (TC:1322-1323) bakes `−cellOffsetFromViewportCenter × finalScale` (translate magnitude depends on scale magnitude), so splitting decomposes the additive sum into matrix compositions that lose mathematical identity.
+
+6. **K8 (forward MorphChoreographer sin-bell) faces the IDENTICAL question — same answer.** Forward K8 stays on `contentHost.layer.transform`. Reverse K8 (in `playPinchToCellsMorph`) is the one that pivots to camera.scale per §46.5 Tier 4.
+
+7. **INVARIANT TEST REQUIRED:** assert `camera.scale == 1.0` AT EVERY TICK during forward morph. Mirrors K7 keystone discipline.
+
+**Action items:**
+- KEEP K7 unchanged. Honor reverse-only scope.
+- Add normalize-step substrate handoff: transfer held scale from `.transform` to `.sublayerTransform`
+- `testCameraScaleStaysAt1DuringForwardMorph` — invariant test
+- §46.6 Q2 (forward touch policy) RESOLVED: NO forward rework needed under Regime I
+
+
+### §47.10 — Cross-trace synthesis: T9 reconciles T4's E6 escalation
+
+**T4 said:** "ESCALATION E6 CONFIRMED — forward direction MUST be reworked. The 'transform vs sublayerTransform orthogonality' defense FALSIFIED by compound-scale: at chat-rest, cane writes `contentHost.transform.scale = chatRestFactor`; if camera.scale = chatRestFactor too, rendered = chatRestFactor² (compound)."
+
+**T9 RESOLVES:** the FALSIFICATION assumed camera.scale = chatRestFactor at forward chat-rest end. Under REGIME I, camera.scale = 1.0 at forward chat-rest end (forward keeps load α on `.transform` via K7). The compound-scale problem evaporates. The transfer happens at normalize: write `camera.scale = chatRestFactor` and reset `.transform = identity` IN SAME TRANSACTION. After normalize: state = `(.transform = identity, .sublayerTransform.scale = chatRestFactor)` — model B substrate is now the truth-bearer for the chat-rest state, ready for reverse-pinch to consume.
+
+**Verdict:** **E6 escalation is RESOLVED. Forward direction stays untouched per user's reverse-only scope.** The forward-vs-reverse symmetry concern only applies to REVERSE direction's cinematography (Tier 4); forward's cane curve (K7) is preserved.
+
+**Critical addition to §46.5's implementation path:** the normalize-step substrate handoff is a NEW load-bearing piece NOT in the original §46.5 Tier 4 enumeration. Must add.
+
+
+### §47.7 — Trace T7: Pinch gesture handlers (CRITICAL FINDINGS — including NEW E10 escalation)
+
+**Verdict:** the 3 handlers (`handlePinchBegan/Changed/Ended`) pivot mechanically cleanly. One new phenomenological escalation surfaces: **cell-centered vs anchor-stable translation during pinch**.
+
+**Critical findings:**
+
+1. **PinchState reshape:**
+   - Rename `initialScale` → `initialPinchScale` (disambiguates from camera scale)
+   - REPLACE `initialExtension` → `initialCameraScale` (model A phantom field replaced)
+   - PRESERVE `anchorPageY`, `previousCentroidY`, `previousCentroidTimestamp`
+   - OPTIONALLY ADD `initialCameraTranslation` (only if anchor-stable chosen per Branch 6)
+
+2. **Inverse-scale mapping VERIFIED:** `camera.scale = initialCameraScale / recognizer.scale`. Pinch-IN-fingers (recognizer.scale → 0.5) increases camera.scale (zoom IN toward chat-rest). Matches universal touch convention + reference video.
+
+3. **`originatedFromCellRest` predicate transposes verbatim:** `pinchState.initialCameraScale <= 1.05`. The 5% tolerance encodes spring-overshoot slop; same numeric value because SpringAnimator math doesn't change.
+
+4. **Commit threshold math transfers verbatim modulo operand rename:** `chatRestFactor` and `chatScale` are LITERALLY the same number (`bounds.height / naturalH ≈ 4.2`). The commit threshold `(1.0 + chatScale) / 2.0 ≈ 2.6` is unchanged. The commit table (4 cases of origin × destination) transfers without modification.
+
+5. **Velocity formula: `cameraScaleVel = -initialCameraScale × pinchVel / (recognizer.scale^2)`.** The negative sign is LOAD-BEARING — without it, the spring engages in the wrong direction at gesture-end.
+
+6. **NEW ESCALATION E10 — cell-centered vs anchor-stable translation during pinch.** Currently camera translates during pinch to keep centroid pinned to a page-coord (TC:1108-1115). Under navigation, two options:
+   - **CELL-CENTERED (RECOMMENDED):** translation locked to `activeCell.frame.midY` during pinch; only scale changes. Hotel-hallway metaphor: you walk toward/away from a door, not along the hallway, during the pinch. Reference shows no centroid-following pan.
+   - **ANCHOR-STABLE:** translation tracks centroid (scale-aware formula: `newTranslation = anchorPageY - (currentCentroidY - bounds.height/2) / cameraScale`). Preserves current "drag the cell while pinching" behavior.
+   - The RECOMMENDED choice simplifies `.changed` significantly (no scale-aware translation re-derivation; spring engages with cameraScaleVelocity ONLY).
+
+7. **`extensionAnimator.stop` at TC:1031 becomes PHANTOM** when extensionAnimator is renamed/deleted. Per T1, rename to `cameraScaleAnimator.stop()` — preserves plumbing.
+
+8. **`contentHost.bringSubviewToFront(activeCell)` at TC:1078 becomes DECORATIVE under model B** (no cell extends above neighbors). Re-evaluate for hit-test z-ordering during gesture (active cell may still want frontmost-ness for tap-during-pinch interaction).
+
+9. **`setActiveCellIndex` and `endEditing(true)` are substrate-independent — preserved verbatim** (focus point 12 confirmed across traces).
+
+10. **WRITE ORDER MATTERS in handlePinchChanged:** if anchor-stable chosen, compute scale FIRST (via inverse mapping), then translation USING scale. Currently translation-only; navigation requires sequenced computation.
+
+11. **Adversarial test gap:** UIKit's `recognizer.scale` could theoretically reach 1e-9; division blows up. Current guard at TC:1087 catches initialScale=0 but not in-flight recognizer.scale → 0. Add `guard recognizer.scale > 1e-3`.
+
+12. **`pinchToCells` reverse routing at TC:1187** enters `playPinchToCellsMorph` (or `springToCellRest` if cinematography disabled). Both pivot to camera.scale per Tier 4 — out of scope for pinch-handler pivot but inherits the substrate change.
+
+**Action items:**
+- N21: PinchState field reshape (rename + replace + optional add)
+- N22: Inverse-scale mapping in handlePinchChanged
+- N23: Velocity formula in handlePinchEnded
+- N24: Commit classification operand rename (verbatim transfer)
+- N25: Adversarial guard `recognizer.scale > 1e-3`
+- **NEW ESCALATION E10**: Cell-centered vs anchor-stable translation during pinch (user decision required)
+
+
+### §47.11 — Wave 3: Cross-trace synthesis
+
+**Shared bedrock across all 9 traces:** the dual-representation architecture is artifactual of model A. Every HOT branch in every trace ultimately resolves to "the second representation (chatVC.view sibling-of-canvas) loses its purpose under navigation; the first representation (chatContentContainer inside cell) becomes the sole rendered surface, magnified by camera-scale."
+
+**Cross-cutting findings:**
+
+**A. T9 RESOLVES T4's E6 ESCALATION.** Forward direction does NOT need to be reworked. Regime I (substrate fission) — K7's cane curve stays on `contentHost.layer.transform`; camera.scale stays dormant (=1.0) during forward; transfer happens at normalize step. **§46.6 Q2 (forward touch policy) is now answered: NO forward rework.**
+
+**B. T1 + T8 form a coherent matrix substrate.** Camera value type extension + pivot decision (viewport-center, `T(viewportCenter) · S(s) · T(-camera.translation)`) + scale-aware viewport helpers. Six files touched: `Camera.swift`, `CameraVelocity` (existing or new), `CameraAnimator`, `TimelineCanvas.applyCameraTransform`, `TimelineCanvas.pagePoint(fromViewport:)`, `TimelineCanvas.pageRectFromViewportRect`.
+
+**C. T2 + T3 form a coherent layout-cleanup unit.** Most deletions are PHANTOM under model B; setCamera trivializes; ChatContentContainer constraints redesigned (paired with applyHorizontalInsetForProgress deletion). Sequencing: must ship in same wave as Tier 1.
+
+**D. T4 + T7 + T1 form the gesture-and-spring path.** Pinch handlers write camera.scale; springs target (scale=1.0 or chatScale, translation=cell.midY). Predicate becomes 3-condition. Latent bug (cancelled-target) fixed.
+
+**E. T5 + T6 form the cleanup-and-validation layer.** Delete ChatViewController + reduce RevealCoordinator + ManualAnimationDriver + golden-frame commit + new test files + visual-diff harness.
+
+**F. NEW BUGS surfaced beyond the original §46 diagnosis:**
+- **§47.4-E8**: Latent `tryClearActiveCellAtRest` cancelled-target bug (T4)
+- **§47.2-CF#1**: Composer off-screen if applyHorizontalInsetForProgress deleted alone (T2)
+- **§47.5-CF**: UIViewPropertyAnimator vs K3 single-display-link tension (T5) — already latent, exposed by model B
+- **§47.6-CF**: WaveR34's page-coord vs viewport-coord assertion (T6) — already broken under model B
+
+**G. NEW ESCALATIONS:**
+- **E7**: K8 sin-bell arc retirement (T4)
+- **E8**: Cancelled-target bug fix (T4, exists today, pivot must fix)
+- **E10**: Cell-centered vs anchor-stable translation during pinch (T7) — NEW
+
+**H. DEAD-BEFORE-WRITTEN tasks (cross-validated, multiple traces):**
+- §45.6's `widthSpringAnimator` (T1, T4 both confirm) — DELETE recommendation
+- §45.7's `listSpacingExtension` consumer wiring (T3, T1 confirm) — DELETE; the derived property itself is also deletable
+- §44.7's spacing animation (T3) — fully explained by camera-scale, no need
+
+**I. PAIRED-WORK CONSTRAINTS:**
+- Tier 1 + Tier 3 (Camera scale extension + scale-aware viewport helpers + layout deletions) ship in SAME WAVE
+- applyHorizontalInsetForProgress deletion + ChatContentContainer constraint redesign ship TOGETHER
+- ChatViewController deletion + ConversationStateController.bind-as-single-state-point ship TOGETHER
+
+**J. Phantom-write hazard:** under navigation, several existing call sites become NO-OPS (performAtomicAlphaSwap, applyExtensionTick if renamed without semantic change, etc.). Leaving them in place produces "ghost code" that runs but does nothing — silently violates model B per §46.4. Either delete or transition cleanly with feature-flag during incremental rollout.
+
+
+### §47.12 — Wave 4: Metacognitive audit
+
+**What this trace exercise produced (across 9 agents):**
+
+- 12 critical findings beyond §46 (latent bugs, axis inversions caught early, phantom code identified, dead-before-written tasks)
+- 4 NEW escalations beyond §46.6's Q1-Q5 (E6 resolved; E7, E8, E10 new)
+- 25 action items mapped to specific code locations + file paths
+- Test infrastructure gaps identified (deterministic spring sampling; golden-frame management; visual-diff hooks)
+- Resolution of forward-direction scope question (Regime I — no forward rework)
+
+**Methodology biases the traces exhibited:**
+
+- **Code-first bias:** most traces started from code, not phenomenology. The user-experience perspective surfaced fewer findings than the substrate-mechanics perspective. Branch 6 in T7 (cell-centered vs anchor-stable) was raised from phenomenology — and that's the only NEW phenomenological escalation.
+- **Per-trace isolation:** agents didn't see each other's outputs. T4 and T9 produced contradictory recommendations (rework forward vs Regime I) — orchestrator-level Wave 3 synthesis was REQUIRED to reconcile. Without it, the contradictions would have shipped as conflicting tasks.
+- **Optimism on numerical thresholds:** several traces noted "the 5% tolerance / 0.15 velocity-bias / 1.15 clamp transfers verbatim" without empirical verification. Maestro flows at known progress points are the missing empirical check.
+
+**Blind spots remaining:**
+
+- **Forward direction's K8 (MorphChoreographer pinch-commit forward) was traced via parallel argument to K7** but no direct trace of `playTapToChatMorph`'s navigation behavior. Under Regime I it's analogous to K7 (stays on .transform); confirm before implementation.
+- **No primary-source observation on the blur curtain question** (T5 FRONTIER). Reference video frame 25-30 may or may not have a perceptual blur distinct from atmospheric gradient. Visual inspection needed.
+- **ChatContentContainer's redesigned constraints under camera-scale** (T2 CF#1) — recommend a layout but no concrete constraint code provided. Implementation will need a constraint redesign pass.
+- **Pinch-during-spring re-engagement** edge case is not exhaustively traced. T7 covers gesture-from-rest; gesture-during-settle (user re-pinches while a spring is in flight) has velocity-continuity implications not fully resolved.
+- **Performance/rendering cost of contentHost.sublayerTransform scale + m34 perspective** — math says zero distortion (m34 on canvas.layer, not contentHost; pure 2D scale; z=0). But Core Animation may have a fast-path for translation-only that breaks when scale != 1.0. Empirical perf test recommended.
+
+**Pivot diagnostic (anchor + breadth check):** the traces stayed anchored to concrete code citations (file:line throughout) while exploring broadly across 9 trace topics. Cross-cutting patterns (Regime I resolution; dead-before-written cross-validation; paired-work constraints) emerged only at orchestrator-level synthesis. The methodology produced what depth-only or breadth-only would have missed.
+
+**Vindication of user memories:**
+
+- `feedback_verify_dont_assume.md` — predicted (twice now) that sub-agent recommendations are HYPOTHESES, not facts. T4-vs-T9 contradiction caught at synthesis layer is the exact failure mode this memory anticipates.
+- `feedback_visual_testing_every_wave.md` — repeatedly flagged. The navigation pivot's correctness can only be verified at the visual gate.
+- `project_chat_substrate_reach.md` (from earlier session) — its claim that ChatContentContainer is substrate-reachable held up across all 9 traces.
+- `feedback_no_padding_comments.md` — relevant for the deletion cleanup (no comment-only stubs left behind).
+
+
+### §47.13 — Consolidated revised implementation plan (supersedes §46.5)
+
+**Replaces §46.5's 6-tier action list with this 7-wave plan informed by all 9 traces:**
+
+**WAVE A — Substrate primitives (atomic; cannot be incremental):**
+
+1. Extend `Camera` value type: add `scale: CGFloat = 1.0` with precondition (finite, > 0). Update `CameraVelocity` to carry scale velocity.
+2. Rewrite `applyCameraTransform` (TC:470-478) with pivot-aware matrix: `T(viewportCenter) · S(s) · T(-camera.translation)` on `contentHost.layer.sublayerTransform`. Verified per T8: viewport-center pivot is correct.
+3. Make `pagePoint(fromViewport:)` (TC:494) and `pageRectFromViewportRect` (TC:450) scale-aware. Hit-test math (`cellIndex(atPagePoint:)`, `cellIndices(in:)`) inherits.
+4. Rename `extensionAnimator` → `cameraScaleAnimator` (preserve plumbing per T1). Add `cameraTranslationAnimator` (extracting from current `cameraAnimator`'s single-axis spring).
+5. Camera write-funnel KVO canary test (T6 CF-2 enforces "single sublayerTransform writer").
+
+**WAVE B — Gesture handlers (depends on WAVE A):**
+
+6. Reshape `PinchState` (T7): rename `initialScale` → `initialPinchScale`; REPLACE `initialExtension` → `initialCameraScale`; preserve other fields. Optionally add `initialCameraTranslation` per E10 decision.
+7. Rewrite `handlePinchBegan`: capture `initialCameraScale = camera.scale`; stop scale + translation animators; preserve `endEditing(true)`, chrome reset, `setActiveCellIndex`, `pendingRevealWorkItem.cancel`.
+8. Rewrite `handlePinchChanged`: inverse-scale mapping `newScale = initialCameraScale / recognizer.scale`; clamp `[1.0, chatScale × 1.15]`. **PER E10**: if cell-centered, lock translation; if anchor-stable, scale-aware re-derivation.
+9. Rewrite `handlePinchEnded`: classify origin via `pinchState.initialCameraScale <= 1.05`; commit math transfers verbatim modulo operand rename; cameraScaleVel formula `-c0 × pinchVel / r²`.
+10. Add adversarial guard `recognizer.scale > 1e-3`.
+
+**WAVE C — Per-cell mechanism cleanup (paired with WAVE A):**
+
+11. **PAIRED:** delete `applyHorizontalInsetForProgress` (CV:417-426) + redesign `ChatContentContainer` constraints to use cell-natural bounds (T2 CF#1). Otherwise composer goes OFF-SCREEN at chat-rest.
+12. Delete `applyChatContentDistanceFade` (CV:404-414). Z-translation via m34 is dead under navigation.
+13. Trivialize `setCamera` (CV:346-362) to ~6-line camera-scale legibility threshold writer. Don't delete; preserve API.
+14. Delete `computeProgress` (CV:368-380). Returns 0 always under navigation.
+15. Delete 6 orphaned AlphaCurve tokens; KEEP `chatContentZMax` (MorphChoreographer keystone dependency).
+16. Add `AlphaCurve.legibilityThreshold` for camera-scale-driven chrome alpha gate.
+17. Delete counter-scale transforms (CV:522, CV:526) — dead under navigation.
+
+**WAVE D — Layout pass simplifications (paired with WAVE A):**
+
+18. Delete `updateNeighborTranslations` (TC:741-758) + `CellView.followActive` + `NeighborPosition` + `resetFollowTransform` + stale CV:253 comment.
+19. Delete `listSpacingExtension` (computed property added 2026-05-25; zero callers).
+20. KEEP `accumulatedYs()`, `pageFrameForCell`, `pageRectFromViewportRect` (scale-aware update per step 3).
+21. Defer `restoreNaturalSiblingOrder` decision to WAVE A outcome.
+
+**WAVE E — Spring + cinematography pivot (depends on WAVE A):**
+
+22. Update `springToCellRest` (TC:1693): targets `(camera.scale=1.0, camera.translation=cell.midY)`. extension write deleted.
+23. Update `playPinchToCellsMorph` (TC:1646): MorphChoreography drives `(startScale, endScale, startCameraY, endCameraY)`. K8 retire (E7) — delete sin-bell arc per §46.0 commitment.
+24. Update `tryClearActiveCellAtRest` (TC:1738) predicate to 3-condition: `cameraScaleAtTarget && cameraTranslationAtTarget && noInFlightAnimator`.
+25. **FIX LATENT BUG (E8):** `cellRestTarget` hardcoded at TC:1750 — capture target in closure, not recompute. Exists today.
+26. **NORMALIZE-STEP HANDOFF (T9 NEW):** after K7 completes, transfer held scale from `.transform` to `.sublayerTransform`. Write `camera.scale = chatRestFactor` and `camera.translation = activeCell.frame.midY` BEFORE resetting `.transform = identity`. Single CATransaction.
+
+**WAVE F — RevealCoordinator + ChatViewController cleanup (depends on WAVE A):**
+
+27. **DELETE ChatViewController entirely.** Cascade: chatVC.view installation, TransientStateSnapshot, captureTransientState, bindTransientState, mapTextRange, detachAndReleaseChatVC.
+28. **REDUCE RevealCoordinator to <50 LOC.** Keep: first-responder hook on camera-arrival; pinchRecognizer.isEnabled as derived state of camera.scale. Delete: performAtomicAlphaSwap, transferState, HandoffPhase, recovery paths.
+29. **Move state migration to single point:** `ConversationStateController.bind(to: ChatContentContainer)` already exists (CSC:42-47). Use as authoritative.
+30. **Blur curtain fate decision** (N9 FRONTIER): observe reference video frame 25-30 — if perceptual blur present beyond atmospheric gradient, keep + move to substrate-driven timing.
+
+**WAVE G — Tests + Maestro (depends on all prior):**
+
+31. New: `Tests/Support/ManualAnimationDriver.swift` (Ticker protocol + manual implementation).
+32. New: `Tests/V2/NavSubstrateCellInvariantTests.swift` (4 invariants: cellHeight constant, m34 untouched, single-write-funnel, scale precondition).
+33. New: `Tests/V2/NavSignatureTests.swift` (5 navigation signatures).
+34. Commit `/tmp/dot_pinch_frames/` → `Tests/Reference/dot_pinch/frame_NNNN.png`.
+35. New: `Tests/Support/PHash.swift` + `scripts/visual-diff.sh`.
+36. Rewrite 11 test files; DELETE 3 test files (Wave4bHeightExtensionTests, WaveR33SymmetricExtensionTests, Phase0Spike07AutoLayoutSolverCost).
+37. Replace `PinchGestureUITests.waitForCellList` 3.5s sleep with predicate-poll.
+38. Maestro flows + screenshot diff at p ∈ {0.0, 0.25, 0.5, 0.62, 0.75, 1.0}; manual review gate per `feedback_visual_testing_every_wave`.
+
+
+### §47.14 — Open escalations summary
+
+| ID | Origin | Decision needed | Default per §45.13/§47 |
+|---|---|---|---|
+| E1 (open) | §45.13 | springResponse retune Y/N | NO |
+| E2 (open) | §45.13 | chatRestCenterLabel applier | Add (counter-scale dead under nav) |
+| E3 (open) | §45.13 | Driver 3 gradient peak vs monotonic | Re-verify (frontier) |
+| E4 (resolved) | §45.13 | Phase 11 cinematography policy R1 | R1 confirmed |
+| E5 (resolved) | §45.13 | widthSpring layout cost | DEAD BEFORE WRITTEN per T1/T4 |
+| E6 (resolved) | §46.5 | Forward direction touch policy | RESOLVED by T9 — Regime I, NO forward rework |
+| E7 (open) | §47.4 | K8 sin-bell arc retirement | Retire (matches §46.0 2D commitment) |
+| E8 (open) | §47.4 | tryClearActiveCellAtRest cancelled-target bug | Fix during pivot |
+| E9 (resolved) | §47.4 | R44 damping only meaningful if forward uses springs | Under Regime I, R44 stays valid |
+| E10 (open) | §47.7 | Cell-centered vs anchor-stable translation during pinch | Cell-centered (RECOMMENDED) |
+
+**Open escalations: E1, E2, E3, E7, E8, E10.** E4, E5, E6, E9 RESOLVED.
+
+
+
+## §48 — Supplementary trace gaps + corrections (2026-05-25)
+
+User identified that §47's 9-trace decomposition still missed gaps and nuances. This section enumerates the gaps + dispatches 4 additional traces (T10-T13) for the most load-bearing concerns.
+
+### §48.0 — Enumerated gaps in §47 coverage
+
+| # | Gap | Trace | Severity |
+|---|---|---|---|
+| 1 | K7-completion-to-normalize window (visual/hit-test mismatch) | T10 | CRITICAL |
+| 2 | TimelineDataSource preload + cell-pool LRU under nav | T11 | LOAD-BEARING |
+| 3 | Static-structure runtime invariants (no cell.transform, no bounds change, no alpha non-monotonicity) | T12 | LOAD-BEARING |
+| 4 | New keystones K9-K14 documentation in CLAUDE.md Part 4 | T12 | LOAD-BEARING |
+| 5 | ReduceMotion path under nav | T13 EC-C | WARM (a11y deprioritized) |
+| 6 | Cards-drifting-apart perceptual invariant (page-coord distance CONSTANT during settle) | T12 | LOAD-BEARING |
+| 7 | R44 tapToChat damping orphan (no consumer under Regime I) | (§47.4 supplementary cleanup) | COOL |
+| 8 | Atmospheric gradient canvas-fixed vs contentHost-fixed | (verify per §47.4 grad position) | LOAD-BEARING |
+| 9 | Pinch-during-K7 edge case (pinchRecognizer state during forward morph window) | T13 EC-A | CRITICAL |
+| 10 | Scale-axis spring damping perceptual reading | T13 EC-B | WARM |
+| 11 | Cancellation mid-settle velocity continuity | T13 EC-E | LOAD-BEARING |
+| 12 | Camera-scale TUNING value empirical derivation | (frontier — Maestro visual gate) | WARM |
+| 13 | Composer (UITextField) under sublayerTransform-scaled view: keyboard avoidance | T13 EC-D | LOAD-BEARING |
+| 14 | maxKeyedPoolSize=20 ceiling re-evaluation | T11 | WARM |
+| 15 | Visual-diff baseline calibration (noise floor) | (frontier — empirical) | WARM |
+
+### §48.1 — Dispatched supplementary traces (T10-T13)
+
+- **T10**: K7-completion-to-normalize WINDOW — visual/hit-test mismatch + pinch-input-in-window edge case
+- **T11**: TimelineDataSource preload + cell-pool LRU under navigation (memory + uncovered-not-created invariant)
+- **T12**: Navigation substrate keystones K9-K14 + runtime invariant tests + CLAUDE.md Part 4 update
+- **T13**: 5 edge cases (pinch-during-K7, scale spring damping, ReduceMotion, composer-under-scale, cancellation mid-settle)
+
+Status: 4 agents dispatched in parallel background, in flight at this writing. Findings will be appended as §48.2-§48.5 when traces complete.
+
+### §48.2 — Trace T10: K7-to-normalize window (CRITICAL FINDINGS — multiple latent bugs in shipped code)
+
+**Verdict:** the 600ms window between K7 visual completion (T≈1.5s) and `normalizeToChatRest` fire (T≈2.1s) is engineered to be USER-INVISIBLE but is NOT engineered to be SUBSTRATE-SAFE. 7 critical findings, several of which are latent bugs in TODAY's shipped code (independent of the nav pivot).
+
+**Window timeline:**
+- T=0: `animateCameraToChatRest` fires; K7's 4 CABasicAnimations attached (totalMorphDuration=1.5s, isRemovedOnCompletion=false)
+- T=1.5s: K7 visually completes; presentation holds at `.transform.scale = chatRestFactor`
+- T=1.6s: `onMorphRevealReady` fires → `revealCoordinator.present()` → blur fade-in begins
+- T=2.1s: cross-fade completes → `normalizeToChatRest` runs via `DispatchQueue.main.async`
+- **Window duration: ~600ms** during which presentation truth diverges from substrate truth
+
+**Seven Critical Findings:**
+
+**CF-1 (HOT, SILENT KEYSTONE):** `pinchRecognizer.isEnabled = false` (TC:1288) is doubly-purposed. Beyond "prevent concurrent transitions," it SILENTLY prevents a hit-test catastrophe: `pagePoint(fromViewport:)` (TC:494) is SCALE-BLIND — doesn't account for the held `.transform.scale = 4.2`. During the window, a finger position maps to a page-coord OUTSIDE the cell's natural-frame bounds. **§47.5-CF#2's "derived pinchRecognizer.isEnabled from camera.scale" plan WOULD EXPOSE THIS HOLE** because under Regime I, camera.scale=1.0 during the window → derived predicate says "enabled" → hit-test mismatch resurfaces. **Need window-active flag in the derived predicate, not just camera.scale.**
+
+**CF-2 (HOT, LATENT BUG):** Timing anchor for normalize is WALL-CLOCK (`DispatchQueue.main.asyncAfter`), not animation-completion. K7's CABasicAnimations have no `delegate` (TC:1307-1320). Under display-link skips or CPU contention, visible K7 completion drifts from scheduled normalize fire. **On slow devices: substrate handoff occurs while presentation is still mid-cane.** The bug shape that catches you on iPhone SE.
+
+**CF-3 (HOT, LATENT BUG — STUCK STATE):** Scene deactivation in the T=1.5→1.6s sub-window (revealReadyDelay) leaves an unrecoverable state. `cancelInFlightAnimations` (TC:1489-1495) cancels `pendingRevealWorkItem` BUT does NOT remove the held K7 animations AND does NOT fire normalize. `handoffPhase == .idle` (RC.present() never got called) → `completeHandoffIfPending` (RC:273) early-returns on reactivation. **User sees 4.2×-zoomed cell with no chat content, no recovery path.** LATENT BUG in shipped code.
+
+**CF-4 (HOT, LATENT BUG):** `layoutSubviews` mid-window has rotation hazard. TC:262-287 calls `applyCameraTransform()` directly. If bounds change (rotation), new `viewportCenter.y` produces new `.sublayerTransform` translation. **Composed with held `.transform.scale = 4.2`, a 50pt translation delta becomes a 210pt visible jump.** Visible during T=1.5→1.8s when canvas.alpha=1.0.
+
+**CF-5 (HOT, BLOCKS NAVIGATION PIVOT):** Atomicity gap. `normalizeToChatRest` (TC:1510-1525) wraps `clearCaneCurveAnimations + resetContentHostTransform + clearChatRestCenterLabelTransientState + extendCellToChatRest` in ONE `CATransaction.withSuppressedActions` block — but `centerCameraOnActiveCell` is OUTSIDE that block (TC:1524). Comment at TC:1522-1523 justifies this as "avoid nested transactions." **Per §47.9.4, the nav pivot requires `camera.scale = chatRestFactor` write atomic with `.transform = identity` reset. Current structure forces it across two transactions → ONE render frame where `.transform = identity` AND `camera.scale = 1.0` AND `.sublayerTransform.scale = 1.0` → cell visually SHRINKS to natural size for 1 frame, then chat-rest pops back.** **MUST REFACTOR before nav pivot ships.**
+
+**CF-6 (WARM, PHANTOM):** `isQuiet` predicate (TC:997-1001) is BLIND to K7. K7's CABasicAnimations bypass the AnimationController/animator infrastructure. During the window, `isQuiet == true`. The only thing blocking re-entry into `animateCameraToChatRest` is `guard contentHost.layer.animation(forKey: windupScale) == nil` at TC:1272 — single-point guard.
+
+**CF-7 (WARM, DECORATIVE):** `RevealBlurOverlay.isUserInteractionEnabled = false` (RBO:15). Blur is purely VISUAL CURTAIN, NOT a gesture barrier. Hit-test descends through it. Safety relies entirely on pinch-disable + tap-guards + chatVC.view-absorption (after RC:126). **Anyone reading the blur and assuming it protects input is WRONG.**
+
+**RECOMMENDED INTERVENTION (single change, highest leverage):**
+
+Adopt option (a) from the trace: move `normalizeToChatRest` to K7's `animationDidStop` callback (attach `CAAnimationDelegate` to one of the 4 K7 animations, e.g., `zoomScale` — the longest-running). AND restructure `normalizeToChatRest` so `centerCameraOnActiveCell`'s critical writes (`camera.scale = chatRestFactor` + `camera.translation = activeCell.midY`) live INSIDE the same suppression block as `resetContentHostTransform`. 
+
+**Closes:** CF-1 (no derived-state hole if window collapses), CF-2 (animation-completion anchor replaces wall-clock), CF-3 (stuck-state path eliminated if normalize fires synchronously on K7 completion), CF-5 (atomicity by construction).
+
+**Add as belt-and-braces:** `canvas.isUserInteractionEnabled = false` at K7 start, re-enable at normalize completion. Closes CF-7.
+
+**Action items:**
+- N42: Move normalize to K7 animationDidStop callback
+- N43: Refactor `normalizeToChatRest` to inline `centerCameraOnActiveCell` writes into outer suppression block (CF-5 atomicity)
+- N44: Add `canvas.isUserInteractionEnabled` toggle around K7 (CF-7 belt-and-braces)
+- N45: Add `cancelInFlightAnimations` extension to handle the K7-active stuck-state (CF-3)
+- N46: Test `testCameraScaleStaysAt1DuringForwardMorph` (§47.9.7 invariant)
+- N47: Test `testTransformAndSublayerTransformAtomicAtNormalize` (CF-5 verification)
+- N48: Add window-active flag to derived `pinchRecognizer.isEnabled` predicate (CF-1)
+- N49: Verify `makeCAAnimation` sets `isRemovedOnCompletion = false` (FRONTIER F1)
+
+### §48.3 — Trace T11: Cell pool + TimelineDataSource under nav (CRITICAL FINDINGS — small fix, zero memory cost)
+
+**Verdict:** the "uncovered not created" violation has a concrete substrate cause + a ~10 LOC fix with ZERO memory cost. The 20-cap on `maxKeyedPoolSize` is NOT the right knob — it bounds a different quantity.
+
+**Critical findings:**
+
+1. **CRITICAL DISAMBIGUATION:** `maxKeyedPoolSize = 20` (TC:51) bounds the KEYED POOL (chatContent memory budget per §35), NOT the install set (`contentHost.subviews`). These are different quantities. The cap is healthy at 20; the install set is currently UNMANAGED at the session level.
+
+2. **ROOT CAUSE:** `cellIndices(in: visiblePageRect, plusMargin: Self.cullMargin)` (TC:545-575) recomputes a FRAME-ANCHORED install range on every `setCamera`. Under camera.scale animation, `visiblePageRect` SHRINKS per frame as scale grows (chat-rest scale ~4.2 → viewport projects to ~200pt of page = ~1 cell). Cells fall outside the range → `updateVisibleCells` returns them to pool → reverse spring re-dequeues them → **`addSubview` events fire** → phenomenology breaks per frame.
+
+3. **THE FIX (one change, ~10 LOC):** During activation (`activeCellIndex != nil`), compute `cellIndices` against a CELL-REST PROJECTION of viewport (or equivalently: UNION new range with prior range — never shrink). The cell-rest projection produces a stable range across the entire activation session.
+
+4. **MEMORY COST: ZERO.** Install set at cell-rest = 5-7 cells, ALREADY present at activation-begin. The fix is preventing SHRINKAGE, not adding cells. No pre-load needed (options a/b/c/d all unnecessary).
+
+5. **PAIRED with §47.3 N5 (scale-aware `pageRectFromViewportRect`)** — must ship same wave. Without N5, the projection arithmetic is wrong → §47.3 finding 1 fires.
+
+6. **NEW K10 INVARIANT CANDIDATE: install-set monotonicity during activation.** Test variants:
+   - Variant A: `Set(instantiatedCells.keys)` is monotone-non-decreasing between `setActiveCellIndex(k)` and matching `setActiveCellIndex(nil)`. 
+   - Variant B (stronger): zero `addSubview` events on `contentHost` during the activation session (via `ObservableContentHost` subclass or KVO spy).
+   - **Does not exist today.** Without this test, "uncovered not created" is a vibe — decays under future refactors.
+
+7. **TimelineDataSource API: UNCHANGED.** Protocol stays. The usage pattern (configure on install, persist across activation) is preserved by existing dequeue routing.
+
+8. **TRIGGER MOMENT — `setActiveCellIndex`** (TC:364 freeze, TC:376 thaw via `tryClearActiveCellAtRest` TC:1738). The engagement state machine already has these signals correctly placed.
+
+9. **Per-frame churn during pinch is the per-frame manifestation of the same bug.** Same root cause, different timescale.
+
+10. **FRONTIER:** minimum permissible `camera.scale` (overscroll beyond cell-rest). If scale < 1.0 is allowed, install set may need to be WIDER than cell-rest visible. Not currently traced — needs verification once Tier 1 ships.
+
+**Action items:**
+- N50: Modify `updateVisibleCells` (TC:622) — when `activeCellIndex != nil`, use cell-rest-projected rect OR union with prior range
+- N51: PAIRED with §47.3 N5 (scale-aware pageRectFromViewportRect) — same wave
+- N52: Add K10 invariant test (Variant A + B) to InvariantHardeningTests
+- N53: Document install-set discipline in CLAUDE.md §2.3 + K10 keystone
+- N54: Verify minimum permissible camera.scale (overscroll behavior) — FRONTIER
+
+
+### §48.4 — Trace T12: Navigation substrate keystones K9-K14 (CRITICAL FINDINGS — including NEW E11 escalation)
+
+**Verdict:** K9-K14 are a MUTUALLY ENTANGLED 6-TUPLE, not individually severable. K10 audit confirms STRUCTURALLY CLEAN today (no rogue writers). K11 has 4 violation sites in current main that must be deleted as part of WAVE A+E. Trace surfaced NEW escalation E11 (pinch-during-forward velocity continuity) AND a CLAUDE.md doc-drift.
+
+**The six keystones:**
+
+- **K9**: `Camera` value type carries `(translation, scale)` as one struct
+- **K10**: `contentHost.layer.sublayerTransform` is SOLE writer of camera scale
+- **K11**: `cell.heightConstraint.constant == cell.naturalHeight` always during gesture
+- **K12**: Normalize-step substrate handoff is atomic (one CATransaction)
+- **K13**: Forward direction keeps `camera.scale = 1.0` throughout (Regime I)
+- **K14**: Pivot matrix order `T(viewportCenter) · S(s) · T(-camera.translation)` on `contentHost.layer.sublayerTransform`
+
+**Critical findings:**
+
+1. **CF#1: K11 has 4 violation sites in CURRENT MAIN.** `applyExtensionTick` (TC:1246), `snapToChatRestState` (TC:1373), `extendCellToChatRest` (TC:1556), `MorphChoreographer.apply` (MC:81). All write `cell.heightConstraint.constant = X` where X != naturalHeight. **K11 is enforceable ONLY after WAVE A+E ships.** Keystone doc must mark as PROSPECTIVE invariant.
+
+2. **CF#2: K13 requires `cameraScaleAnimator` to be IDLE during forward.** Per §47.1 N1b split, scale-axis animator must have `value == target == 1.0` AND `velocity == 0` during forward. Test must assert this.
+
+3. **CF#3: K10 audit is STRUCTURALLY CLEAN today.** No site writes `contentHost.layer.sublayerTransform` outside `applyCameraTransform`. K7's CABasicAnimations write `contentHost.layer.transform` (DIFFERENT property). K10 transfers cleanly under scale extension. **§47.9 Regime I survives.**
+
+4. **CF#4: K12 atomicity is BROKEN in current `normalizeToChatRest`.** TC:1516-1525 wraps 4 helpers in CATransaction, but `centerCameraOnActiveCell` is OUTSIDE that block (TC:1524). For nav pivot, `camera.scale = chatRestFactor` write + `.transform = identity` reset MUST live in SAME CATransaction. **Refactor required** (already flagged in §48.2 CF-5).
+
+5. **CF#5: K14 matrix order verification at s=1.0 reduces to current K1 form** `T(vpC.y - camT)`. Backwards-compatible safety net for incremental rollout. Test: `test_K14_matrixAtIdentityScale_reducesToTranslationOnly`.
+
+6. **CF#6: K9-K14 are a 6-TUPLE.** Removing K9 collapses K10/K13/K14. Removing K11 collapses K12/K13. Removing K10 makes K9.scale phantom. **They ship together as WAVE A.** Documentation must say "not individually severable."
+
+7. **CF#7: `morphInProgress` and `PinchState`-singleton are NOT keystones** — coordination predicates whose role evolves but doesn't reach substrate commitment. Don't elevate to keystone.
+
+8. **CF#8: K10/K2 isolation must be explicit in keystone doc.** `canvas.layer.sublayerTransform.m34` (K2) and `contentHost.layer.sublayerTransform` (K10 scale-write) are on DIFFERENT LAYERS. §47.1-CF#2 confirmed. Documentation must prevent future agents from collapsing them.
+
+9. **CF#9 — NEW ESCALATION E11**: pinch-during-forward velocity continuity. If user re-pinches DURING K7's run (cane curve still flying), the new gesture's `pinchState.initialCameraScale` reads `camera.scale = 1.0` (K13 invariant) — NOT chatRestFactor (which is held on `.transform` by K7). The re-pinch originates from cell-rest scale phenomenologically, even though visually mid-zoom-in. Phenomenological surprise. **Escalation E11 added to §47.14 open list.**
+
+10. **CF#10: ChatContentContainer constraint redesign is PAIRED with K11.** §47.2 CF#1 already raised; K11 does NOT fix the composer-off-screen bug — K11 EXPOSES it. The bug-fix is constraint redesign, paired with K11's enforcement.
+
+**Deliverables produced by T12 (ready to paste):**
+- 6-row addition to CLAUDE.md Part 4 keystone table (verbatim Markdown)
+- New bullet for CLAUDE.md Part 6 escalation triggers (K9-K14 6-tuple touch)
+- `Tests/V2/NavSubstrateInvariantTests.swift` skeleton with 14 tests (several `XCTSkip` pending ManualAnimationDriver per §47.6 N11)
+
+**Additional doc-drift flagged:**
+
+- CLAUDE.md Part 4 row 9 says "5 invariant asserts in `InvariantHardeningTests`" but current file has 4 tests, none substrate-related. Either populate the asserts or update the reference.
+- `chatRestFactor = bounds.height / cell.naturalHeight` derivation scattered across 5 sites (TC:1298, 1368, 1401, 1467, 1664). **Centralize** into one helper to prevent drift.
+
+**Action items:**
+- N55: Append 6-row K9-K14 table to CLAUDE.md Part 4 (use T12's verbatim deliverable)
+- N56: Add K9-K14-touch escalation bullet to CLAUDE.md Part 6
+- N57: Create `Tests/V2/NavSubstrateInvariantTests.swift` from T12 skeleton (14 tests; some skipped pending §47.6 N11 ManualAnimationDriver)
+- N58: Centralize `chatRestFactor` helper (`TimelineCanvas.chatRestScale(for: cell)`)
+- N59: Resolve CLAUDE.md Part 4 row-9 doc-drift (5-invariant asserts reference)
+- **NEW E11 escalation**: pinch-during-forward velocity continuity policy
+
+
+### §48.5 — Trace T13: Five edge cases (CRITICAL FINDINGS — 17 across 5 cases)
+
+**Verdict:** five distinct edge cases each surface load-bearing concerns; cross-cutting synthesis reveals **three deeper architectural tensions** (transform-space disagreement, cancellation-discipline vocabulary gap, `isQuiet` domain blindness).
+
+**EC-A — Pinch-during-K7-flight:**
+
+- **CF#1:** `pinchRecognizer.isEnabled = false` at TC:1288 is DOUBLY-PURPOSED. Beyond "prevent concurrent transitions," it silently prevents the chimera-state bug. §47.5's derived-state reduction would EXPOSE this hole.
+- **CF#2:** `isQuiet` predicate (TC:997) is STRUCTURALLY BLIND to K7's CABasicAnimations. Re-entry blocked only by TC:1272's windup-key check (single-point guard).
+- **CF#3:** `cancelInFlightAnimations` (TC:1489) does NOT clear K7. Scene-deactivation during K7 leaves animations attached — recoverable only via `normalizeToChatRest` which doesn't fire on cancellation paths. **LATENT BUG in shipped code.**
+- **CF#4:** Under §47.5 derived-state, pinch-during-K7 produces CHIMERA STATE: contentHost.transform holds K7 cane curve × contentHost.sublayerTransform holds gesture-driven scale = visually impossible composite. No rest path can clear it.
+- **CF#5:** No `cancelK7()` method exists. Cancellation discipline (CLAUDE.md §2.7) covers SpringAnimator/CurveAnimator/MorphChoreographer but NOT raw CABasicAnimations. **Vocabulary gap.**
+
+**EC-B — Scale-axis spring damping perceptual implications:**
+
+- **CF#6:** Under §46.0's "rooms static, camera moves," camera-scale overshoot is CAMERA-SYSTEM INSTABILITY (lens-wobble / zoom-rack), phenomenologically distinct from cell-resize overshoot. Damping decision needs phenomenological grounding, not mere transposition.
+- **CF#7:** Apple HIG vestibular guidance is about parallax/translational motion; scale (zoom) is named differently. UIKit pinch-to-zoom (Photos, etc.) overshoots slightly without HIG flag. **§47.4's transposition may be over-cautious.**
+- **Recommendation:** keep ζ=1.0 as default but expose `cameraScaleDamping` as `physicsTuning` field for A/B prototyping against reference video.
+
+**EC-C — ReduceMotion path under navigation:**
+
+- **CF#10:** ReduceMotion bypass is MISSING from REVERSE direction (`springToCellRest`). Existing TC:1280 only covers forward tap-to-chat. **LATENT HIG VIOLATION in shipped code.**
+- **CF#11:** ReduceMotion bypass is MISSING from PINCH-COMMIT path (`playTapToChatMorph`). Same pre-existing bug.
+- **Recommended Option (a) instant snap** under model B: atomic CATransaction wrapping `camera.scale = chatScale + camera.translation = cell.midY + chrome end-state writes + .transform = identity + pinchRecognizer.isEnabled = false`.
+
+**EC-D — UIKit keyboard avoidance for `UITextField` inside sublayerTransform-scaled view:**
+
+- **CF#12:** `view.convertRect(_:to:nil)` walks UIView chain using `UIView.transform`, NOT `layer.sublayerTransform`. **Bedrock UIKit fact.** Under model B at chatScale=4.2, composerTextField's `convertRect` returns the NATURAL (unscaled) position, NOT the rendered position. UIKit chrome (selection magnifier, VoiceOver focus, accessibility heuristics) sees natural bounds.
+- **CF#13:** Selection magnifier appears in WRONG PLACE under model B (middle-of-viewport where natural-cell sits, not over the visually-rendered scaled text). VoiceOver focus rings same. **Architectural property of model B + sublayerTransform** — not a fixable bug; choice is: accept, work around at canvas level, or move composer to `inputAccessoryView`.
+
+**EC-E — Cancellation mid-settle velocity continuity:**
+
+- **CF#14:** `SpringAnimator.stop(immediately: true)` PRESERVES velocity field. "Dead start" hypothesis is FALSE technically — but velocity is then UNUSED.
+- **CF#15:** Gesture flow is NOT velocity-continuous via SpringAnimator's retarget path. handlePinchBegan hard-stops; handlePinchEnded explicitly recomputes velocity from `recognizer.velocity`. The preserved velocity from CF#14 is **dead code** — replaced by gesture-computed velocity.
+- **CF#16:** Velocity GAP at gesture re-engagement (~50ms while `recognizer.velocity` ramps from 0). User might perceive a brief "pause" — spring was visibly moving, user touches, spring stops, gesture takes over from zero.
+- **CF#17:** **§44.13 Case E vs implementation INCONSISTENCY.** §44.13 says "SpringAnimator's velocity continuity handles this — when target changes mid-flight, the spring carries velocity into the new target." Implementation at TC:1030-1031 HARD-STOPS the spring. Either §44.13 is wrong about implementation or implementation has a velocity-loss bug. **Choose intent; reconcile.**
+
+**Cross-EC shared bedrock:**
+
+- **B1: Transform-space disagreement** (EC-A, EC-D) — three coexisting transform spaces: `CALayer.transform` (K7), `CALayer.sublayerTransform` (camera), `UIView.frame` (UIKit geometry). They DON'T compose in UIKit's geometry stack. UIKit chrome positioning sees the third one only.
+- **B2: Cancellation-discipline vocabulary gap** (EC-A, EC-E) — CLAUDE.md §2.7 covers (a)-class animators with `.stop()` methods; (b)-class raw CABasicAnimations on layers have no stop method, uncovered.
+- **B3: `isQuiet` domain blindness** (EC-A, indirectly EC-E) — engagement-state oracle only knows about (a)-class animators.
+- **B4: End-state-equivalence as RM safety contract** (EC-C, indirectly EC-B) — snap-vs-morph equivalence is what makes ReduceMotion bypass safe; needs re-establishment under model B.
+
+**Untraced edge cases flagged for follow-up:**
+- Multi-finger interaction during gesture (3rd or 4th finger added)
+- Device rotation during K7-held state (centeringTranslate doesn't update; held K7 might shift cell off-screen post-rotation)
+
+**Action items:**
+- N60: Extend `cancelInFlightAnimations` to call existing `clearCaneCurveAnimations()` helper (CF#3 — small fix)
+- N61: Add `morphIsHeld` predicate to AND into §47.5's derived `pinchRecognizer.isEnabled` (CF#4)
+- N62: Extend `isQuiet` to check `contentHost.layer.animation(forKey: MorphAnimationKey.windupScale.rawValue) == nil` (CF#2)
+- N63: Add ReduceMotion bypass to `springToCellRest` (CF#10)
+- N64: Add ReduceMotion bypass to `playTapToChatMorph` (CF#11)
+- N65: Reconcile §44.13 Case E vs implementation (CF#17 — doc-bug fix)
+- N66: Empirical spike — composer/keyboard/selection-magnifier behavior under sublayerTransform at chatScale=4.2 (EC-D)
+- N67: Architecture decision — composer at `inputAccessoryView` vs cell-position vs canvas-level keyboard handling (EC-D)
+- N68: Multi-finger gesture trace (deferred)
+- N69: Rotation-during-K7 trace (deferred)
+
+
+### §48.6 — Final consolidated assessment + saturation note
+
+**Trace exercise is COMPLETE.** 13 traces dispatched (T1-T13), all complete. The cumulative output across §47 + §48:
+
+**Quantitative summary:**
+
+| Metric | Count |
+|---|---|
+| Traces dispatched | 13 |
+| Critical findings beyond §46 | 36 (19 in §47 + 17 in §48) |
+| Latent bugs in shipped code | 9 |
+| New keystones identified (K9-K14) | 6 |
+| Action items (N1-N69) | 69 |
+| Open escalations | 8 (E1, E2, E3, E7, E8, E10, E11) — E4, E5, E6, E9 resolved |
+| Dead-before-written tasks caught | 3 (widthSpringAnimator, listSpacingExtension consumer, original Tier 5 chatVC complexity) |
+| Ready-to-paste deliverables | 6 (K9-K14 CLAUDE.md table, NavSubstrateInvariantTests.swift skeleton, normalize-handoff refactor, install-set monotonicity test, CATransaction-wrap fix, 6 alphaCurve constants) |
+| Doc-drifts flagged | 3 (CLAUDE.md K1-K8 row 9; scattered chatRestFactor; §44.13 Case E) |
+
+**Latent bugs in shipped code** (independent of nav pivot — exist today):
+1. State-corruption: `ConversationStateController.composerIsFirstResponder` never cleared on reverse (§45 trace finding)
+2. Cancelled-target hardcoding: `tryClearActiveCellAtRest`'s cellRestTarget at TC:1750 hardcoded for `.pinchToCells` (§47.4 E8)
+3. Scene-deactivation stuck-state in T=1.5→1.6s K7 sub-window (§48.2 CF-3)
+4. Rotation-during-window glitch: layoutSubviews mid-K7-window with rotation produces 4.2×-scaled translation delta (§48.2 CF-4)
+5. CATransaction atomicity gap in `normalizeToChatRest` (§48.2 CF-5, blocks nav pivot)
+6. `cancelInFlightAnimations` doesn't clear K7 animations (§48.5 CF#3)
+7. ReduceMotion bypass missing from reverse direction (§48.5 CF#10, HIG violation)
+8. ReduceMotion bypass missing from pinch-commit path (§48.5 CF#11, HIG violation)
+9. §44.13 Case E documentation vs implementation inconsistency on velocity continuity (§48.5 CF#17)
+
+**Architectural KEYSTONES added (K9-K14):**
+- K9: Camera(translation, scale) value type
+- K10: `contentHost.layer.sublayerTransform` sole writer for scale
+- K11: `cell.heightConstraint.constant == naturalHeight` always
+- K12: Normalize-step atomic handoff
+- K13: Forward camera.scale=1.0 (Regime I)
+- K14: Pivot matrix `T(viewportCenter) · S(s) · T(-camera.translation)`
+- K10 (new candidate): Install-set monotonicity during activation
+
+**Open escalations needing user decision:**
+- **E1**: springResponse retune Y/N (default NO)
+- **E2**: chatRestCenterLabel applier add or out-of-scope (default ADD)
+- **E3**: Driver 3 gradient peak-vs-monotonic intent (frontier)
+- **E7**: K8 sin-bell arc retirement under §46.0's 2D commitment
+- **E8**: Latent cancelled-target bug fix during pivot
+- **E10**: Pinch translation policy cell-centered vs anchor-stable (default cell-centered)
+- **E11**: Pinch-during-forward velocity continuity policy (surfaced by T12)
+
+**Saturation signal:**
+
+The marginal value of additional traces beyond T13 is approaching zero. The remaining unknowns require RUNNING CODE + visual observation, not more agent traces:
+- chatRestScale empirical value (T11 frontier)
+- Reference video camera-scale trajectory re-analysis (T13 EC-B frontier)
+- Composer/keyboard/selection-magnifier empirical behavior under sublayerTransform (T13 EC-D)
+- Visual-diff noise floor calibration (T6 frontier)
+- Multi-finger gesture behavior (T13 deferred)
+- Rotation-during-K7 behavior (T13 deferred)
+- iOS 26 held-animation parity (T10 frontier)
+
+**Recommended next move:**
+
+**STOP TRACING. Transition to incremental build.** Beginning with the smallest-scope highest-value items that are bug fixes for shipped code (independent of the nav pivot):
+
+**Priority 1 — Latent bug fixes for shipped code (independent of nav pivot):**
+- Fix state-corruption (§45 — already partially in branch wave-13-impl)
+- Fix cancelled-target hardcoding (E8)
+- Fix `cancelInFlightAnimations` K7 omission (CF#3)
+- Add ReduceMotion bypasses (CF#10, CF#11)
+- Fix `normalizeToChatRest` CATransaction atomicity (CF-5)
+
+**Priority 2 — Nav pivot WAVE A** (per §47.13):
+- Camera value type extension (scale field + precondition)
+- applyCameraTransform pivot-aware matrix
+- Scale-aware viewport helpers
+- Extension/cameraScale animator rename
+- K9-K14 CLAUDE.md documentation
+- NavSubstrateInvariantTests.swift skeleton
+
+**Priority 3 — Visual gate (per `feedback_visual_testing_every_wave`):**
+- ManualAnimationDriver infrastructure
+- Commit golden frames to `Tests/Reference/`
+- visual-diff.sh + PHash.swift
+- Maestro flow against `_frames/dot_pinch.mov` at key progress points
+
+**Priority 4 — Remaining edge cases (after WAVE A green):**
+- Composer/keyboard empirical spike (EC-D)
+- chatContentContainer constraint redesign
+- Install-set monotonicity test (K10 candidate)
+- Forward/Phase 11 cinematography decisions (K8 retirement, E10, E11 escalations)
+
+The 9 latent bugs are valuable independent of whether the nav pivot ships. Recommend addressing them in their own wave (Wave 14?) before the substrate pivot lands.
+
+
+
 
 
 

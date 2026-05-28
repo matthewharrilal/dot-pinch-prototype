@@ -70,10 +70,33 @@ public struct PHash {
     }
 
     private static func computeDCT(_ pixels: [Float]) -> [Float] {
-        // PLACEHOLDER: real DCT computation deferred to visual-diff wave.
-        // For now returns the input (identity DCT) so the harness can wire up.
-        // A proper DCT-II implementation goes here for ≤32x32 ~ negligible cost.
-        return pixels
+        let N = 32
+        guard pixels.count == N * N else { return pixels }
+        var cosTable = [Float](repeating: 0, count: 8 * N)
+        for k in 0..<8 {
+            for x in 0..<N {
+                cosTable[k * N + x] = cosf((2 * Float(x) + 1) * Float(k) * .pi / (2 * Float(N)))
+            }
+        }
+        var dct = [Float](repeating: 0, count: N * N)
+        let normFactor: Float = 2.0 / Float(N)
+        let alpha0: Float = 1.0 / sqrtf(2.0)
+        for u in 0..<8 {
+            for v in 0..<8 {
+                var sum: Float = 0
+                for x in 0..<N {
+                    let cosU = cosTable[u * N + x]
+                    for y in 0..<N {
+                        let cosV = cosTable[v * N + y]
+                        sum += pixels[x * N + y] * cosU * cosV
+                    }
+                }
+                let alphaU: Float = (u == 0) ? alpha0 : 1.0
+                let alphaV: Float = (v == 0) ? alpha0 : 1.0
+                dct[u * N + v] = normFactor * alphaU * alphaV * sum
+            }
+        }
+        return dct
     }
 
     private static func pack(dct: [Float]) -> UInt64 {

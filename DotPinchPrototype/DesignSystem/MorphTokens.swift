@@ -10,10 +10,11 @@ enum MorphTiming {
     static let windupContribution: CGFloat = 0.08
     static let liftEndMagnitude: CGFloat = 50
     static let unifiedArcYMagnitude: CGFloat = 50
-    static let unifiedArcZMagnitude: CGFloat = 700
+    static let unifiedArcZMagnitude: CGFloat = 0
     static let viewportCoveragePad: CGFloat = 40
     static let chatRestFactorFallback: CGFloat = 4.92
     static let translateYTarget: CGFloat = -50
+    static let chatRestMarginFactor: CGFloat = 1.10
 }
 
 enum MorphCurves {

@@ -15,6 +15,14 @@ final class ChatContentContainer: UIView {
     let bubbleStack: ChatBubbleStackView = ChatBubbleStackView()
     let composer: ChatComposerView = ChatComposerView()
 
+    private let illegibilityBlur: UIVisualEffectView = {
+        let v = UIVisualEffectView(effect: UIBlurEffect(style: .systemMaterial))
+        v.translatesAutoresizingMaskIntoConstraints = false
+        v.alpha = 0
+        v.isUserInteractionEnabled = false
+        return v
+    }()
+
     // MARK: - Parent VC reference (weak per retain-cycle audit §3.6)
 
     // ChatContent is owned by cell which is owned by canvas which is owned by
@@ -44,10 +52,10 @@ final class ChatContentContainer: UIView {
         self.parentVC = parentVC
         super.init(frame: .zero)
         translatesAutoresizingMaskIntoConstraints = false
-        // Theme.Page.surface (Q2 verified: ≠ Theme.Cell.fill) to match
-        // chatVC.view.backgroundColor at CVC:22 for handoff alpha-swap parity.
         backgroundColor = Theme.Page.surface
         isOpaque = true
+        layer.masksToBounds = true
+        layer.cornerRadius = Theme.Radius.card
         installViewHierarchy()
         // NOTE: activateCrossViewConstraints() is NOT called here. At init time,
         // self is not yet a subview of anything — header.topAnchor and
@@ -77,6 +85,17 @@ final class ChatContentContainer: UIView {
         addSubview(header)
         addSubview(bubbleStack)
         addSubview(composer)
+        addSubview(illegibilityBlur)
+        NSLayoutConstraint.activate([
+            illegibilityBlur.topAnchor.constraint(equalTo: topAnchor),
+            illegibilityBlur.leadingAnchor.constraint(equalTo: leadingAnchor),
+            illegibilityBlur.trailingAnchor.constraint(equalTo: trailingAnchor),
+            illegibilityBlur.bottomAnchor.constraint(equalTo: bottomAnchor),
+        ])
+    }
+
+    func setIllegibilityFraction(_ fraction: CGFloat) {
+        illegibilityBlur.alpha = min(1.0, max(0.0, fraction))
     }
 
     // MARK: - Cross-view constraint setup

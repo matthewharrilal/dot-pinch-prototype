@@ -26,6 +26,76 @@ enum DummyConversationLoader {
 
         let messages: [Message] = [
             Message(
+                role: .user,
+                content: "Hey, it's been a long day. Can't quite shake the static in my head.",
+                timestamp: minutesAfter(base, hours: 0, minutes: 5)
+            ),
+            Message(
+                role: .assistant,
+                content: "I'm here. Want to talk through what's on your mind, or would it help to sit quietly together for a few minutes?",
+                timestamp: minutesAfter(base, hours: 0, minutes: 7)
+            ),
+            Message(
+                role: .user,
+                content: "Talk, I think. Work was rough — kept getting pulled into meetings I didn't really need to be in, and I never got back to the deep work I'd planned.",
+                timestamp: minutesAfter(base, hours: 0, minutes: 12)
+            ),
+            Message(
+                role: .assistant,
+                content: "That's a familiar kind of frustration — the day being chewed up by other people's calendars while your own priorities slide. Was there a specific moment where you noticed it slipping, or did it just accumulate?",
+                timestamp: minutesAfter(base, hours: 0, minutes: 15)
+            ),
+            Message(
+                role: .user,
+                content: "Mostly accumulated. The 11am stand-up ran long, then there was a follow-up at 1, then a design review at 3, and by 4:30 I was just exhausted.",
+                timestamp: minutesAfter(base, hours: 0, minutes: 22)
+            ),
+            Message(
+                role: .assistant,
+                content: "Four meetings spanning most of your focus window. That's a structural problem, not a willpower one — there literally wasn't space for the deep work between them.",
+                timestamp: minutesAfter(base, hours: 0, minutes: 25)
+            ),
+            Message(
+                role: .user,
+                content: "Yeah, I keep telling myself I'll block focus time but then someone adds something to my calendar and I don't push back hard enough.",
+                timestamp: minutesAfter(base, hours: 0, minutes: 32)
+            ),
+            Message(
+                role: .assistant,
+                content: "What would pushing back look like? Like, concretely — if your manager added a meeting to a focus block tomorrow, what's the actual response you'd want to send?",
+                timestamp: minutesAfter(base, hours: 0, minutes: 35)
+            ),
+            Message(
+                role: .user,
+                content: "Probably something like 'I have focus time blocked then — can we do it before 11 or after 4?' I just don't always send it.",
+                timestamp: minutesAfter(base, hours: 0, minutes: 42)
+            ),
+            Message(
+                role: .assistant,
+                content: "That phrasing sounds perfect — it's specific, it offers alternatives, it doesn't apologize. Want to draft a version of it now while it's fresh, so you have it ready when the next invite comes in?",
+                timestamp: minutesAfter(base, hours: 0, minutes: 45)
+            ),
+            Message(
+                role: .user,
+                content: "Maybe tomorrow. I'm pretty wiped right now.",
+                timestamp: minutesAfter(base, hours: 0, minutes: 52)
+            ),
+            Message(
+                role: .assistant,
+                content: "Fair. Sleep's the priority. I'll surface this thread in the morning when you check in — that way you can pick it up at full capacity.",
+                timestamp: minutesAfter(base, hours: 0, minutes: 55)
+            ),
+            Message(
+                role: .user,
+                content: "Thanks. Goodnight.",
+                timestamp: minutesAfter(base, hours: 1, minutes: 2)
+            ),
+            Message(
+                role: .assistant,
+                content: "Goodnight. Rest well.",
+                timestamp: minutesAfter(base, hours: 1, minutes: 3)
+            ),
+            Message(
                 role: .assistant,
                 content: "Hey, hope you slept okay. I'll send a gentle nudge in a bit about today's movement check-in.",
                 timestamp: minutesAfter(base, hours: 3, minutes: 0)

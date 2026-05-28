@@ -8,6 +8,13 @@ DerivedData/
 docs/audit/captures/
 docs/audit/frames/
 docs/audit/video.mov
+visual_audit/
+sweep_output/
+sweep_f1/
+sweep_f1_final/
+sweep_f2/
+_video_audit/
+Tests/Screenshots/
 
 # macOS Finder metadata
 .DS_Store

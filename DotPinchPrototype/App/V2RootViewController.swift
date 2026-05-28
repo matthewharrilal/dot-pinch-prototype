@@ -223,9 +223,6 @@ final class V2RootViewController: UIViewController {
         let pagePoint = timelineCanvas.pagePointFromViewportPoint(viewportPoint)
         guard let idx = timelineCanvas.cellIndex(atPagePoint: pagePoint) else { return }
         guard !revealCoordinator.isPresenting else { return }
-        // §16.8 NEW guard: skip if a cell is already active. Without this,
-        // taps on chatContent (composer text field activation) would re-fire
-        // animateCameraToChatRest on top of chat-state.
         guard timelineCanvas.activeCellIndex == nil else { return }
         timelineCanvas.animateCameraToChatRest(forCellAt: idx)
     }

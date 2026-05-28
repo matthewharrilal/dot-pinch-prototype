@@ -176,6 +176,8 @@ final class CellView: UIView {
     private var naturalHorizontalInset: CGFloat = 0
     private var pageWidth: CGFloat = 0
 
+    static let cellTransformAnchor = CGPoint(x: 0.4, y: 0.85)
+
     // MARK: - Init
 
     override init(frame: CGRect) {
@@ -186,8 +188,10 @@ final class CellView: UIView {
             layer.cornerRadius = Theme.Radius.card
             layer.masksToBounds = true
             backgroundColor = Theme.Cell.fill
-            // Cell-own-transform invariant: identity always. The camera lives
-            // on contentHost.layer.sublayerTransform, never on the cell itself.
+            layer.shadowColor = Theme.Cell.shadowColor
+            layer.shadowOffset = Theme.Cell.shadowOffset
+            layer.shadowRadius = Theme.Cell.shadowRadius
+            layer.shadowOpacity = 0
             layer.transform = CATransform3DIdentity
             preservesSuperviewLayoutMargins = false
             accessibilityIdentifier = AccessibilityID.conversationSurface
@@ -248,12 +252,6 @@ final class CellView: UIView {
         let expectedMidY = naturalCenterY
         DispatchQueue.main.async { [weak self] in
             guard let self else { return }
-            // Check the UNTRANSFORMED center (layer.position.y), NOT frame.midY.
-            // frame.midY includes the cell's `transform` translation applied by
-            // updateNeighborTranslations.followActive (±half-growth at chat-rest).
-            // layer.position.y reflects the centerY-anchored constraint result
-            // without the transform, which is what this invariant actually
-            // protects: that the constraint produces the correct logical center.
             assert(abs(self.layer.position.y - expectedMidY) < 0.5,
                    "CellView: centerY-anchored invariant violated; layer.position.y=\(self.layer.position.y) expected=\(expectedMidY)")
         }
@@ -344,21 +342,24 @@ final class CellView: UIView {
     /// (delegates to single-concern appliers), P12.2 tell-don't-ask,
     /// P13.4 ≤15 LOC, P19.3 idempotent.
     func setCamera(_ camera: Camera, viewport: CGRect) {
-        // P1.1 guard-chain | P6.7 silence justified:
-        // - bounds.height==0: pre-layout pass; alpha writes would be overwritten
-        // - morphInProgress: MorphChoreographer + PMCT own chrome alphas during
-        //   pinch-commit forward (per D19); setCamera defers
         guard bounds.height > 0, !morphInProgress else { return }
 
-        let progress = computeProgress(viewport: viewport)
-        applyCellRestChromeAlphas(progress: progress)
-        applyChatRestAffordanceAlpha(progress: progress)
-        applyChatContentDistanceFade(progress: progress)
-        applyHorizontalInsetForProgress(progress)
+        let naturalH = naturalHeight > 0 ? naturalHeight : bounds.height
+        let chatRestScale = (viewport.height / naturalH) * MorphTiming.chatRestMarginFactor
 
-        // Cell-own-transform invariant (CLAUDE.md §2.2): cell.layer.sublayerTransform
-        // is ALWAYS identity — camera lives on canvas.layer.sublayerTransform.
+        applyCellRestChromeAlphasFromScale(chatRestScale: chatRestScale)
+        applyChatRestAffordanceFromScale(chatRestScale: chatRestScale)
+        applyHorizontalInsetFromScale(chatRestScale: chatRestScale)
+        applyShadowGate(chatRestScale: chatRestScale)
+        applyIllegibilityBlur(chatRestScale: chatRestScale)
+        applyChatContentScaleFade(chatRestScale: chatRestScale)
+
         layer.sublayerTransform = CATransform3DIdentity
+    }
+
+    var currentScale: CGFloat {
+        guard naturalHeight > 0 else { return 1.0 }
+        return bounds.height / naturalHeight
     }
 
     // MARK: - Per-frame progress derivation (pure)
@@ -367,7 +368,7 @@ final class CellView: UIView {
     /// P19.1 pure | P19.4 referentially transparent | P6.6 no sentinel.
     private func computeProgress(viewport: CGRect) -> CGFloat {
         let naturalH = naturalHeight > 0 ? naturalHeight : bounds.height
-        let chatRestFactor = viewport.height / naturalH
+        let chatRestFactor = (viewport.height / naturalH) * MorphTiming.chatRestMarginFactor
         let chatRestRange = chatRestFactor - 1.0
 
         // When naturalH ≈ viewport.height, chatRestRange ≈ 0 — division
@@ -381,48 +382,52 @@ final class CellView: UIView {
 
     // MARK: - Per-frame appliers (side-effectful, idempotent)
 
-    /// labelStack + pinchGlyph fade IN as progress drops toward cell-rest.
-    private func applyCellRestChromeAlphas(progress: CGFloat) {
-        let alpha = 1 - smoothstep(AlphaCurve.cellRestChromeIn, AlphaCurve.cellRestChromeFull, progress)
+    private func applyCellRestChromeAlphasFromScale(chatRestScale: CGFloat) {
+        let band = StageOrdering.cellRestChromeBand(chatRestScale: chatRestScale)
+        let alpha = 1 - smoothstep(band.lowerBound, band.upperBound, currentScale)
         labelStack.alpha = alpha
         pinchGlyph.alpha = alpha
     }
 
-    /// Inward-arrows affordance fades OUT as progress drops toward cell-rest.
-    private func applyChatRestAffordanceAlpha(progress: CGFloat) {
-        chatRestAffordance.alpha = smoothstep(
-            AlphaCurve.chatRestAffordanceIn,
-            AlphaCurve.chatRestAffordanceFull,
-            progress
-        )
+    private func applyChatRestAffordanceFromScale(chatRestScale: CGFloat) {
+        let lowScale = 1.0 + AlphaCurve.chatRestAffordanceIn * (chatRestScale - 1.0)
+        let highScale = 1.0 + AlphaCurve.chatRestAffordanceFull * (chatRestScale - 1.0)
+        chatRestAffordance.alpha = smoothstep(lowScale, highScale, currentScale)
     }
 
-    /// chatContent recedes via m34 perspective foreshortening (Z-translation),
-    /// with residual alpha for deep-cell-rest cleanup. Per §23 hybrid.
-    /// Z is the substrate's perspective primitive; "fading-into-illegibility"
-    /// emerges as a CONSEQUENCE of distance, not an arbitrary alpha curve.
-    private func applyChatContentDistanceFade(progress: CGFloat) {
+    private func applyChatContentScaleFade(chatRestScale: CGFloat) {
         guard let chatContent = chatContentContainer else { return }
-
-        let z = (1 - progress) * AlphaCurve.chatContentZMax
-        chatContent.layer.transform = CATransform3DMakeTranslation(0, 0, z)
-        chatContent.alpha = smoothstep(
-            AlphaCurve.chatContentAlphaIn,
-            AlphaCurve.chatContentAlphaFull,
-            progress
-        )
+        let band = StageOrdering.chatContentFadeBand(chatRestScale: chatRestScale)
+        chatContent.alpha = smoothstep(band.lowerBound, band.upperBound, currentScale)
+        chatContent.layer.transform = CATransform3DIdentity
     }
 
-    /// Horizontal inset: 16pt at cell-rest → 0pt at chat-rest (edge-to-edge cell).
-    private func applyHorizontalInsetForProgress(_ progress: CGFloat) {
+    private func applyHorizontalInsetFromScale(chatRestScale: CGFloat) {
         guard pageWidth > 0,
               let leadingC = leadingConstraint,
               let widthC = widthConstraint
         else { return }
 
-        let currentInset = naturalHorizontalInset * (1 - progress)
+        let range = max(chatRestScale - 1.0, AlphaCurve.progressDenominatorEpsilon)
+        let scaleProgress = min(1.0, max(0.0, (currentScale - 1.0) / range))
+        let currentInset = naturalHorizontalInset * (1 - scaleProgress)
         leadingC.constant = currentInset
         widthC.constant = pageWidth - 2 * currentInset
+    }
+
+    private func applyShadowGate(chatRestScale: CGFloat) {
+        let band = StageOrdering.cellShadowBand(chatRestScale: chatRestScale)
+        let alpha = 1 - smoothstep(band.lowerBound, band.upperBound, currentScale)
+        layer.shadowOpacity = Float(alpha * Theme.Cell.shadowOpacityCellRest)
+    }
+
+    private func applyIllegibilityBlur(chatRestScale: CGFloat) {
+        guard let chatContent = chatContentContainer else { return }
+        let band = StageOrdering.focalBlurBand(chatRestScale: chatRestScale)
+        let mid = (band.lowerBound + band.upperBound) / 2
+        let rising = smoothstep(band.lowerBound, mid, currentScale)
+        let falling = 1 - smoothstep(mid, band.upperBound, currentScale)
+        chatContent.setIllegibilityFraction(rising * falling)
     }
 
     // MARK: - ChatContent install / teardown (§1.3)
@@ -520,6 +525,13 @@ final class CellView: UIView {
         pinchGlyph.alpha = 0
         chatRestCenterLabel.alpha = 1
         chatRestCenterLabel.transform = CGAffineTransform(scaleX: counterScale, y: counterScale)
+        layer.shadowOpacity = 0
+        chatContentContainer?.setIllegibilityFraction(0)
+    }
+
+    override func layoutSubviews() {
+        super.layoutSubviews()
+        layer.shadowPath = UIBezierPath(roundedRect: bounds, cornerRadius: Theme.Radius.card).cgPath
     }
 
     func performMorphChromeTransition(profile: MorphChromeProfile) {
@@ -557,5 +569,15 @@ final class CellView: UIView {
                            self.pinchGlyph.alpha = 0
                        },
                        completion: nil)
+
+        let shadowFade = CABasicAnimation(keyPath: "shadowOpacity")
+        shadowFade.fromValue = layer.shadowOpacity
+        shadowFade.toValue = 0
+        shadowFade.duration = LabelFadeTiming.dateLabelDuration
+        shadowFade.beginTime = profile.centerLabelBeginTime + LabelFadeTiming.dateLabelDelay
+        shadowFade.fillMode = .forwards
+        shadowFade.isRemovedOnCompletion = false
+        layer.add(shadowFade, forKey: "morph.shadow")
+        layer.shadowOpacity = 0
     }
 }

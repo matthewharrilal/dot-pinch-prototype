@@ -1033,7 +1033,7 @@ final class TimelineCanvas: UIView {
     /// in scope.
     private func chatRestScale(naturalHeight: CGFloat) -> CGFloat {
         guard naturalHeight > 0, bounds.height > 0 else { return 1.0 }
-        return bounds.height / naturalHeight
+        return (bounds.height / naturalHeight) * MorphTiming.chatRestMarginFactor
     }
 
     // MARK: - Pinch gesture (recognizer plumbing)
@@ -1084,6 +1084,8 @@ final class TimelineCanvas: UIView {
         // this, chrome could be stuck at alpha=0 if the prior pinch-commit
         // was interrupted mid-fade.
         if let idx = anchorCellIdx, let activeCell = instantiatedCells[idx] {
+            activeCell.chatContentContainer?.bubbleStack.stopDeceleration()
+            activeCell.chatContentContainer?.setIllegibilityFraction(0)
             CATransaction.withSuppressedActions {
                 activeCell.dateLabel.layer.removeAllAnimations()
                 activeCell.topicSummaryLabel.layer.removeAllAnimations()
@@ -1097,6 +1099,7 @@ final class TimelineCanvas: UIView {
                 activeCell.pinchGlyph.alpha = 1
                 activeCell.chatRestCenterLabel.alpha = 0
                 activeCell.chatRestAffordance.alpha = 0
+                activeCell.chatRestCenterLabel.transform = .identity
             }
         }
 
@@ -1170,7 +1173,7 @@ final class TimelineCanvas: UIView {
 
         let chatRestFactor = chatRestScale(naturalHeight: naturalH)
         let currentFactor = heightC.constant / naturalH
-        let commitThreshold: CGFloat = (1.0 + chatRestFactor) / 2.0
+        let commitThreshold: CGFloat = StageOrdering.illegibilityToeFull(chatRestScale: chatRestFactor)
 
         let pinchVel = recognizer.velocity.isFinite ? recognizer.velocity : 0
         let extensionVel = pinchState.initialExtension * pinchVel

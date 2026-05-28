@@ -6,10 +6,29 @@ final class ChatBubbleView: UIView {
 
     // MARK: - Init
 
-    init(message: Message) {
+    init(message: Message, metadataHidden: Bool = false) {
         super.init(frame: .zero)
         translatesAutoresizingMaskIntoConstraints = false
         backgroundColor = .clear
+
+        let bodyLabel = UILabel()
+        bodyLabel.text = message.content
+        bodyLabel.font = Theme.Typography.bubbleBody
+        bodyLabel.textColor = Theme.Text.primary
+        bodyLabel.numberOfLines = 0
+        bodyLabel.lineBreakMode = .byWordWrapping
+        bodyLabel.translatesAutoresizingMaskIntoConstraints = false
+        addSubview(bodyLabel)
+
+        if metadataHidden {
+            NSLayoutConstraint.activate([
+                bodyLabel.topAnchor.constraint(equalTo: topAnchor, constant: 4),
+                bodyLabel.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 4),
+                bodyLabel.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -4),
+                bodyLabel.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -4)
+            ])
+            return
+        }
 
         let roleLabel = UILabel()
         roleLabel.text = Self.displayName(for: message.role)
@@ -18,15 +37,6 @@ final class ChatBubbleView: UIView {
         roleLabel.numberOfLines = 1
         roleLabel.translatesAutoresizingMaskIntoConstraints = false
         addSubview(roleLabel)
-
-        let bodyLabel = UILabel()
-        bodyLabel.text = message.content
-        bodyLabel.font = Theme.Typography.bubbleBody
-        bodyLabel.textColor = Theme.Text.primary
-        bodyLabel.numberOfLines = 0   // live reflow during the morph
-        bodyLabel.lineBreakMode = .byWordWrapping
-        bodyLabel.translatesAutoresizingMaskIntoConstraints = false
-        addSubview(bodyLabel)
 
         let timeLabel = UILabel()
         timeLabel.text = Self.timestampFormatter.string(from: message.timestamp)

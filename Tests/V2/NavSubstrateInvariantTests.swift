@@ -171,4 +171,63 @@ final class NavSubstrateInvariantTests: XCTestCase {
         //   4. Assert preActivationKeys.isSubset(of: Set(instantiatedCells.keys)) — install set never shrinks during activation.
         //   5. setActiveCellIndex(nil); install set may now shrink to visible-with-margin.
     }
+
+    // MARK: - NEW-Inv.1: Uniform-scale fence (§50.11.4)
+
+    /// Prose: "2D affine uniform scale — sx = sy, with no shear, no rotation, no perspective."
+    /// Per-tick assertion on the scale-bearing transform: m12=m21=0 (no shear),
+    /// m13=m23=m31=m32=0 (no rotation around X/Y), m11==m22 (uniform sx==sy).
+    /// Under K10' (post-§50.13 revision), the scale-bearing transform is
+    /// activeCell.layer.transform. Pre-revision: contentHost.layer.sublayerTransform.
+    /// Active under current code: camera writes translation-only on sublayerTransform,
+    /// so the fence holds (identity-with-translation everywhere).
+    func test_NEW_Inv_1_uniformScale_noShearNoRotation() {
+        let controller = AnimationController()
+        let canvas = TimelineCanvas(controller: controller, frame: viewport)
+        for (camera, label) in [
+            (Camera.identity, "identity"),
+            (Camera(translation: 100), "translation 100"),
+            (Camera(translation: -50), "translation -50"),
+            (Camera(translation: 0, scale: 1), "scale 1 explicit"),
+        ] {
+            canvas.setCamera(camera)
+            let t = canvas.contentHost.layer.sublayerTransform
+            XCTAssertEqual(t.m12, 0, accuracy: 1e-9, "\(label): no shear m12")
+            XCTAssertEqual(t.m21, 0, accuracy: 1e-9, "\(label): no shear m21")
+            XCTAssertEqual(t.m13, 0, accuracy: 1e-9, "\(label): no X-rotation m13")
+            XCTAssertEqual(t.m23, 0, accuracy: 1e-9, "\(label): no X-rotation m23")
+            XCTAssertEqual(t.m31, 0, accuracy: 1e-9, "\(label): no Y-rotation m31")
+            XCTAssertEqual(t.m32, 0, accuracy: 1e-9, "\(label): no Y-rotation m32")
+            XCTAssertEqual(t.m11, t.m22, accuracy: 1e-9, "\(label): uniform scale m11==m22")
+        }
+    }
+
+    // MARK: - NEW-Inv.2: Zero-Z fence (§50.11.4)
+
+    /// Prose: "no perspective matrix applied. every depth cue gives the user
+    /// permission to read recession." K2 m34=-1/1000 is a passive matrix; it
+    /// produces NO visual effect when no layer has nonzero Z. Post G-K7-Z Option B
+    /// (§50.12), unifiedArcZMagnitude=0 makes BOTH forward direction (cane curve)
+    /// AND chatContent distance fade (NEW-3 predecessor) effectively zero-Z.
+    /// Fence asserts the architectural commitment: Z-magnitude tokens = 0.
+    func test_NEW_Inv_2_zeroZ_inActiveGesturePath() {
+        let controller = AnimationController()
+        let canvas = TimelineCanvas(controller: controller, frame: viewport)
+        XCTAssertEqual(canvas.contentHost.layer.transform.m43, 0, accuracy: 1e-9,
+                       "contentHost.layer.transform Z=0 at rest")
+        XCTAssertEqual(MorphTiming.unifiedArcZMagnitude, 0, accuracy: 1e-9,
+                       "K7 cane curve Z magnitude=0 per G-K7-Z Option B (§50.12)")
+        XCTAssertEqual(canvas.contentHost.layer.transform.m43, 0, accuracy: 1e-9,
+                       "contentHost.transform.m43 stays 0 (no Z-translation in active path)")
+    }
+
+    // MARK: - NEW-Audit.1: Active-cell-no-evict invariant (§50.9.8)
+
+    /// During activeCellIndex != nil, the active cell is never returned to pool,
+    /// evicted from keyed pool, or rebound. True by structure (TC:824-829 rejects
+    /// active in returnToPool; LRU only fires for cells in pool;
+    /// teardownChatContentForMemoryPressure fires on neighbors only). Make explicit.
+    func test_NEW_Audit_1_activeCell_neverEvicted_duringEngagement() throws {
+        throw XCTSkip("Requires data-source-driven harness + simulation of memory-pressure pruning paths")
+    }
 }
